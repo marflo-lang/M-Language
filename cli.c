@@ -270,9 +270,14 @@ int main(void)
         free(Tokens);
         free(L);
         free(s);
+        //print("");
+        print("esto es una prueba del print");
+        print(5);
+        print(true);
+        print(6.397);
+        print('a');
+        print("prueba de", "cadena multiple", 5, "concatenacion");
         printf("M Languaje\n");
-        print("");
-        //print("esto es una prueba del print");
     }
 
     return 0;

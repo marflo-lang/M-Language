@@ -4,18 +4,25 @@
 
 //#include "print.h"
 
-//inline void print_string(char* s)
-//{
-#define print_string(s) printf("%s", s ? s : "nil")
-//}
+inline static void print_string(int dummy, ...)
+{
+    va_list args;
+    va_start(args, dummy);
+
+    const char* s = va_arg(args, const char*);
+    printf("%s ", s ? s : "nil");
+    
+    va_end(args);
+}
 
 #define print_without_end(x)    _Generic((x), \
-int: printf("%d", x), \
-char*: print_string(x), \
-char: printf("%c", x), \
-bool: printf("%s", x ? "true" : "false"), \
-double: printf("%d", x), \
-default: printf("%p", &x))
+int: printf("%d ", x), \
+double: printf("%g ", x), \
+char: printf("%c ", x), \
+char*: print_string(0, x), \
+const char*: print_string(0, x), \
+bool: printf("%s ", x ? "true" : "false"), \
+default: printf("indefinido "))
 
 #define print_with_end(x)   print_without_end(x); printf("\n")
 
