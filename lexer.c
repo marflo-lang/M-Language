@@ -265,6 +265,12 @@ static LTokenType identifierType(Lexer* L, int start, int length)
     return M_V_IDENTIFIER;
 }
 
+static Token makeError(Lexer* L, const char* context, Position pos)
+{
+    Token err = { .length = L->position - pos.offset, .location = locationCPos(pos, L->lastPosition), .type = M_ERROR };
+    return err;
+}
+
 static Token scanToken(Lexer* L)
 {
     skipWhiteSpace(L);
@@ -443,7 +449,9 @@ static Token scanToken(Lexer* L)
             else
             {
                 // Error no hay uso para ! por si solo
-                return makeToken(L, M_ERROR, begin);
+                illegalCharacter(c, L->name, locationCPos(L->lastPosition, L->lastPosition));
+                return makeError(L, "IllegalCharacterError", begin);
+                //return makeToken(L, M_ERROR, begin);
             }
         case '"':
             // " string
@@ -499,8 +507,12 @@ static Token scanToken(Lexer* L)
             //if (c == '\0')
                 //return makeEOF(L, begin);
             // Error simbol invalid
-            printErr("Character  invalid", "Lexer", 3);
-            exit(1);
+            //printErr("Character  invalid", "Lexer", 3);
+            illegalCharacter(c, L->name, locationCPos(L->lastPosition, L->lastPosition));
+            printf("%c\n", L->current);
+            return makeError(L, "IllegalCharacterError", begin);
+            //exit(1);
+            //consume(L);
     }
 
 }
@@ -549,8 +561,10 @@ static void pushToken(TokenArray* Tokens, Token t)
 
         if (newData == NULL)
         {
-            printErr("Error de memoria", "Lexer", 3);
+            memoryCrash("Lexer");
             exit(1);
+            //printErr("Error de memoria", "Lexer", 3);
+            //exit(1);
         }
 
         Tokens->data = newData;
@@ -559,8 +573,10 @@ static void pushToken(TokenArray* Tokens, Token t)
     }
     else if (Tokens->count > Tokens->capacity)
     {
-        printErr("Memory overflow", "Lexer", 3);
+        memoryCrash("Lexer");
         exit(1);
+        //printErr("Memory overflow", "Lexer", 3);
+        //exit(1);
     }
 
     //printf("count = %d, capacity = %d\n", Tokens->count, Tokens->capacity);
@@ -574,7 +590,8 @@ TokenArray* Lexer_execute(Lexer* L)
     TokenArray* Tokens = malloc(sizeof(TokenArray));
     if (Tokens == NULL)
     {
-        printErr("Error de memoria", "Lexer", 3);
+        memoryCrash("Lexer");
+        //printErr("Error de memoria", "Lexer", 3);
         exit(1);
     }
     Tokens->capacity = 0;
@@ -582,7 +599,8 @@ TokenArray* Lexer_execute(Lexer* L)
     Token* data = malloc(sizeof(Token) * Tokens->capacity);
     if (data == NULL)
     {
-        printErr("Error de memoria", "Lexer", 3);
+        memoryCrash("Lexer");
+        //printErr("Error de memoria", "Lexer", 3);
         exit(1);
     }
     Tokens->data = data;
@@ -604,13 +622,14 @@ TokenArray* Lexer_execute(Lexer* L)
     return Tokens;
 }
 
-Lexer* Lexer_init(const char* src)
+Lexer* Lexer_init(const char* src, const char* name)
 {
     Lexer* L = malloc(sizeof(Lexer));
 
     if (L == NULL)
     {
-        printErr("Error de memoria", "Lexer", 3);
+        memoryCrash("Lexer");
+        //printErr("Error de memoria", "Lexer", 3);
         exit(1);
     }
 
@@ -618,10 +637,52 @@ Lexer* Lexer_init(const char* src)
     L->line = 1;
     L->position = -1;
     L->src = src;
+    L->name = name;
     L->length = (int) strlen(src);
     consume(L); // L->current
 
     return L;
+}
+
+void print_token(const char* src, Token token)
+{
+    printf("Type: %d '", token.type);
+    if (token.type == M_V_INT)
+        printf("int");
+    else if (token.type == M_V_FLOAT)
+        printf("float");
+    else if (token.type == M_V_STRING)
+        printf("String");
+    else if (token.type == M_V_UNFINISHED_STRING)
+        printf("Unfinished String");
+    else if (token.type == M_ERROR)
+        printf("ERROR");
+    else if (token.type == M_EOF)
+        printf("<eof>");
+    else if (token.type >= 15)
+        printf("Operand");
+    else if (token.type == M_V_IDENTIFIER)
+        printf("identifier");
+    else
+        printf("Keyword");
+
+    printf("', Value: ");
+    /*for (int j = 0; j < token.length; j++)
+    {
+        int p = token.location.begin.offset + j;
+        printf("%c", L->src[p]);
+    }*/
+
+    for (int j = token.location.begin.offset; j <= token.location.end.offset; j++)
+    {
+        printf("%c", src[j]);
+    }
+
+    printf(", Length: %d", token.length);
+
+    printf(", Offset: begin %d -> end %d", token.location.begin.offset, token.location.end.offset);
+
+    printf("\n");
 }
 
 void Lexer_print(Lexer* L, TokenArray* Tokens)
@@ -631,43 +692,44 @@ void Lexer_print(Lexer* L, TokenArray* Tokens)
     printf("Tokens count -> %d\n", Tokens->count);
     for (int i = 0; i < Tokens->count; i++)
     {
-        printf("Type: %d '", Tokens->data[i].type);
-        if (Tokens->data[i].type == M_V_INT)
-            printf("int");
-        else if (Tokens->data[i].type == M_V_FLOAT)
-            printf("float");
-        else if (Tokens->data[i].type == M_V_STRING)
-            printf("String");
-        else if (Tokens->data[i].type == M_V_UNFINISHED_STRING)
-            printf("Unfinished String");
-        else if (Tokens->data[i].type == M_ERROR)
-            printf("ERROR");
-        else if (Tokens->data[i].type == M_EOF)
-            printf("<eof>");
-        else if (Tokens->data[i].type >= 15)
-            printf("Operand");
-        else if (Tokens->data[i].type == M_V_IDENTIFIER)
-            printf("identifier");
-        else
-            printf("Keyword");
-        
-        printf("', Value: ");
-        /*for (int j = 0; j < Tokens->data[i].length; j++)
-        {
-            int p = Tokens->data[i].location.begin.offset + j;
-            printf("%c", L->src[p]);
-        }*/
+        print_token(L->src, Tokens->data[i]);
+        //printf("Type: %d '", Tokens->data[i].type);
+        //if (Tokens->data[i].type == M_V_INT)
+        //    printf("int");
+        //else if (Tokens->data[i].type == M_V_FLOAT)
+        //    printf("float");
+        //else if (Tokens->data[i].type == M_V_STRING)
+        //    printf("String");
+        //else if (Tokens->data[i].type == M_V_UNFINISHED_STRING)
+        //    printf("Unfinished String");
+        //else if (Tokens->data[i].type == M_ERROR)
+        //    printf("ERROR");
+        //else if (Tokens->data[i].type == M_EOF)
+        //    printf("<eof>");
+        //else if (Tokens->data[i].type >= 15)
+        //    printf("Operand");
+        //else if (Tokens->data[i].type == M_V_IDENTIFIER)
+        //    printf("identifier");
+        //else
+        //    printf("Keyword");
+        //
+        //printf("', Value: ");
+        ///*for (int j = 0; j < Tokens->data[i].length; j++)
+        //{
+        //    int p = Tokens->data[i].location.begin.offset + j;
+        //    printf("%c", L->src[p]);
+        //}*/
 
-        for (int j = Tokens->data[i].location.begin.offset; j <= Tokens->data[i].location.end.offset; j++)
-        {
-            printf("%c", L->src[j]);
-        }
+        //for (int j = Tokens->data[i].location.begin.offset; j <= Tokens->data[i].location.end.offset; j++)
+        //{
+        //    printf("%c", L->src[j]);
+        //}
 
-        printf(", Length: %d", Tokens->data[i].length);
+        //printf(", Length: %d", Tokens->data[i].length);
 
-        printf(", Offset: begin %d -> end %d", Tokens->data[i].location.begin.offset, Tokens->data[i].location.end.offset);
+        //printf(", Offset: begin %d -> end %d", Tokens->data[i].location.begin.offset, Tokens->data[i].location.end.offset);
 
-        printf("\n");
+        //printf("\n");
     }
         printf("===== END LEXER DEBUG =====\n");
 }
@@ -688,7 +750,7 @@ int main2(void)
     printf("offset = %d\n", p2.offset);*/
 
     char* src = "59 + 6.3       * \n 3009.3063 / 'hola m \n '   \n - 56.3 \t ";
-    Lexer* L = Lexer_init(src);
+    Lexer* L = Lexer_init(src, "internal_test.m");
     TokenArray* Tokens = Lexer_execute(L);
     Lexer_print(L, Tokens);
     printf("Finish\n");

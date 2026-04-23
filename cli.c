@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <ctype.h>
 #include <stdbool.h>
+#include <locale.h>
 #include "err.h"
 #include "cli.h"
 #include "lexer.h"
@@ -208,6 +209,7 @@ static Source* read_file(const char* path)
 
 int main(void)
 {
+    setlocale(LC_ALL, "spanish");
     //printErr("prueba de error", "CLI", 3);
     //printWarn("prueba de warning", "CLI", 3);
     //printTrace("prueba de stack trace", "CLI", 3);
@@ -247,7 +249,7 @@ int main(void)
         ========== Lexer ==========
         */
 
-        Lexer* L = Lexer_init(s->src);
+        Lexer* L = Lexer_init(s->src, config.script_path);
         TokenArray* Tokens = Lexer_execute(L);
         // Debug Lexer
         if (DEBUG) //{}
@@ -257,16 +259,18 @@ int main(void)
         ========== Arena Allocator ==========
         */
 
-        //Arena A;
-        //arena_init(&A, 1024 * 1024); // 1 MB
+        Arena A;
+        arena_init(&A, 1024 * 1024); // 1 MB
 
         /*
         ========== Parser ==========
         */
-        /*
-        Parser* P = parser_init(Tokens, &A);
+        //-*
+        printf("%d, %d, %d \n", Tokens->data[0].type, Tokens->data[1].type, Tokens->data[2].type);
+        Parser* P = parser_init(Tokens, &A, config.script_path, s->src);
         parser_execute(P);
-        */
+
+        //*/
         free(Tokens);
         free(L);
         free(s);

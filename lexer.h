@@ -17,6 +17,7 @@ typedef struct
 typedef struct
 {
     const char* src; // Codigo fuente
+    const char* name; // Name of script
     char current;
     int position;
     int line;
@@ -166,10 +167,11 @@ inline Position getEndPosition(Token* T)
 //#define getEndPos(T)    (Position*) (T)->location->end
 
 
-Lexer* Lexer_init(const char* src);
+Lexer* Lexer_init(const char* src, const char* name);
 
 TokenArray* Lexer_execute(Lexer* L);
 
 // static
 void Lexer_print(Lexer* L, TokenArray* Tokens);
 
+void print_token(const char* src, Token token);

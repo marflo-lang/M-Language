@@ -1,6 +1,7 @@
 #pragma once
 #include <stdio.h>
 #include <stdbool.h>
+#include <stdarg.h>
 
 //#include "print.h"
 
@@ -15,6 +16,48 @@ inline static void print_string(int dummy, ...)
     va_end(args);
 }
 
+//static void print_token(Lexer* L, TokenArray* Tokens, int i)
+/*static void print_token(Token token)
+{
+    printf("Type: %d '", token.type);
+    if (token.type == M_V_INT)
+        printf("int");
+    else if (token.type == M_V_FLOAT)
+        printf("float");
+    else if (token.type == M_V_STRING)
+        printf("String");
+    else if (token.type == M_V_UNFINISHED_STRING)
+        printf("Unfinished String");
+    else if (token.type == M_ERROR)
+        printf("ERROR");
+    else if (token.type == M_EOF)
+        printf("<eof>");
+    else if (token.type >= 15)
+        printf("Operand");
+    else if (token.type == M_V_IDENTIFIER)
+        printf("identifier");
+    else
+        printf("Keyword");
+
+    printf("', Value: ");
+    /*for (int j = 0; j < token.length; j++)
+    {
+        int p = token.location.begin.offset + j;
+        printf("%c", L->src[p]);
+    }*/
+
+    /*for (int j = token.location.begin.offset; j <= token.location.end.offset; j++)
+    {
+        //printf("%c", L->src[j]);
+    }*-/
+
+    printf(", Length: %d", token.length);
+
+    printf(", Offset: begin %d -> end %d", token.location.begin.offset, token.location.end.offset);
+
+    printf("\n");
+}*/
+
 #define print_without_end(x)    _Generic((x), \
 int: printf("%d ", x), \
 double: printf("%g ", x), \
@@ -23,6 +66,7 @@ char*: print_string(0, x), \
 const char*: print_string(0, x), \
 bool: printf("%s ", x ? "true" : "false"), \
 default: printf("indefinido "))
+/*Token: print_token(x), \*/
 
 #define print_with_end(x)   print_without_end(x); printf("\n")
 
