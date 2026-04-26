@@ -779,7 +779,7 @@ void parser_execute(Parser* P)
 
 void parser_print(Parser* P)
 {
-
+    P->arena;
 }
 
 
