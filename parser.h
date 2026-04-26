@@ -76,5 +76,5 @@ Parser* parser_init(TokenArray* Tokens, Arena* A, const char* name, const char* 
 
 void parser_execute(Parser* P);
 
-void parser_print(Parser* P, AST* ast);
+void parser_print(Parser* P);
 

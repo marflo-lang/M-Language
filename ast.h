@@ -163,5 +163,5 @@ typedef struct
 
 
 
-
+#define is_expr_terminator(x)   ((x) == M_EOF || (x) == M_RBRACE || (x) == M_RPAREN /*|| (x) == M_SEMICOLON || ((x) >= M_VAR && (x) <= M_ELSE)*/)
 

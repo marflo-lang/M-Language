@@ -15,7 +15,7 @@ static void consume(Lexer* L)
     if (L->current == '\n')
     {
         L->line++;
-        L->column = 1;
+        L->column = 0;
         consume(L);
     }
     //if (L->position >= L->length)
@@ -105,7 +105,7 @@ static Token makeString(Lexer* L, char quote, Position pos)
     if (!finished)
         ttype = M_V_UNFINISHED_STRING;
 
-    Location loc = locationCPos(pos, L->lastPosition);
+    Location loc = locationCPosNum(pos, L->line, L->column, L->position);
     //Location loc = locationCPosNum(pos, L->line, L->column, L->position);
     /*if (loc == NULL)
     {
@@ -151,7 +151,7 @@ static Token makeNumber(Lexer* L, Position pos)
         while (isdigit(L->current))
             consume(L);
     }
-    Location loc = locationCPos(pos, L->lastPosition);
+    Location loc = locationCPosNum(pos, L->line, L->column, L->position);
     /*if (loc == NULL)
     {
         printErr("Error de memoria", "Lexer", 3);
@@ -173,13 +173,13 @@ static Token makeNumber(Lexer* L, Position pos)
 
 static Token makeIdentifier(Lexer* L, Position pos, int length)
 {
-    Token t = {.type = M_V_IDENTIFIER, .location = locationCPos(pos, L->lastPosition), .length = length};
+    Token t = {.type = M_V_IDENTIFIER, .location = locationCPosNum(pos, L->line, L->column, L->position), .length = length};
     return t;
 }
 
 static Token makeKeyWord(Lexer* L, LTokenType ttype, Position pos, int length)
 {
-    Token t = { .type = ttype, .location = locationCPos(pos, L->lastPosition), .length = length };
+    Token t = { .type = ttype, .location = locationCPosNum(pos, L->line, L->column, L->position), .length = length };
     return t;
 }
 
@@ -203,7 +203,7 @@ static Token chooseKeywordOrIdentifier(Lexer* L, Position pos)
 static Token makeToken(Lexer* L, LTokenType ttype, Position pos)
 {
     //printf("LastPos = %d, off = %d, length = %d\n", L->position, pos.offset, L->lastPosition.offset - pos.offset);
-    Token t = { .type = ttype, .location = locationCPos(pos, L->lastPosition), .length = L->position - pos.offset };
+    Token t = { .type = ttype, .location = locationCPosNum(pos, L->line, L->column, L->position), .length = L->position - pos.offset };
     return t;
 }
 
@@ -622,6 +622,24 @@ TokenArray* Lexer_execute(Lexer* L)
     return Tokens;
 }
 
+char* getText(size_t len, const char* src, int offset)
+{
+
+    char* text = malloc(len + 1);  // espacio para '\0'
+    if (!text) return ""; // opcional pero correcto
+
+    strncpy_s(
+        text,
+        len + 1,  // tamaño del buffer destino
+        src + offset,
+        len
+    );
+    //print_token(P->src, P->current);
+    text[len] = '\0';
+
+    return text;
+}
+
 Lexer* Lexer_init(const char* src, const char* name)
 {
     Lexer* L = malloc(sizeof(Lexer));
@@ -673,14 +691,24 @@ void print_token(const char* src, Token token)
         printf("%c", L->src[p]);
     }*/
 
-    for (int j = token.location.begin.offset; j <= token.location.end.offset; j++)
-    {
-        printf("%c", src[j]);
-    }
+    if (token.type == M_EOF)
+        printf("<eof>");
+    else
+        for (int j = token.location.begin.offset; j < token.location.end.offset; j++)
+        {
+            printf("%c", src[j]);
+        }
 
     printf(", Length: %d", token.length);
 
-    printf(", Offset: begin %d -> end %d", token.location.begin.offset, token.location.end.offset);
+    //printf(", Line: begin %d -> end %d, Column: begin %d -> end %d, Offset: begin %d -> end %d",
+    printf(", Begin %d, %d, %d -> End %d, %d, %d",
+        token.location.begin.line, 
+        token.location.begin.column, 
+        token.location.begin.offset, 
+        token.location.end.line,
+        token.location.end.column,
+        token.location.end.offset);
 
     printf("\n");
 }

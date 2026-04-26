@@ -24,6 +24,14 @@ static void printEndFormatError(Location location)
     printf("\n");
 }
 
+static void printEndToCloseFormatError(Location l1, Location l2)
+{
+    if (l1.begin.line != l2.begin.line)
+        printf(" at line %d, column %d", l1.begin.line, l1.begin.column);
+    else
+        printf(" at column %d", l1.begin.column);
+}
+
 // Globals
 
 void memoryCrash(const char* src)
@@ -99,6 +107,23 @@ void expectedButGot(const char* expected, const char* got, const char* context, 
     printf("\033[31m");
     printf(" Expected '%s', but got '%s'%s ", expected, got, context != NULL ? context : "");
     printEndFormatError(location);
+}
+
+void expectedToClose(const char* expected, const char* close, const char* got, const char* context, const char* name, Location begin, Location exp)
+{
+    printStartFormatError(name);
+    printf("\033[0m");
+    printf("\033[4;31m");
+    printf("SyntaxError:");
+    printf("\033[0m");
+    printf("\033[31m");
+    printf(" Expected '%s' to close '%s'", expected, close);
+    printEndToCloseFormatError(begin, exp);
+    printf(", but got '%s'%s ", got, context != NULL ? context : "");
+    //printEndFormatError(exp);
+    printEndToCloseFormatError(exp, begin);
+    printf("\033[0m");
+    printf("\n");
 }
 
 

@@ -171,6 +171,8 @@ Lexer* Lexer_init(const char* src, const char* name);
 
 TokenArray* Lexer_execute(Lexer* L);
 
+char* getText(size_t len, const char* src, int offset);
+
 // static
 void Lexer_print(Lexer* L, TokenArray* Tokens);
 

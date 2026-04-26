@@ -21,4 +21,5 @@ void illegalCharacter(const char character, const char* name, Location location)
 // Errores del Parser
 void syntaxError(const char* message, const char* name, Location location);
 void expectedButGot(const char* expected, const char* got, const char* context, const char* name, Location location);
+void expectedToClose(const char* expected, const char* close, const char* got, const char* context, const char* name, Location begin, Location exp);
 

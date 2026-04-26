@@ -2,28 +2,6 @@
 #include "parser.h"
 #include "err.h"
 
-//ParserRule rules[] = {
-//    [M_V_INT] = {parser_int, NULL, PREC_NONE},
-//    [M_V_STRING] = {parser_string, NULL, PREC_NONE},
-//    [M_V_TRUE] = {parser_literal, NULL, PREC_NONE},
-//    [M_V_FALSE] = {parser_literal, NULL, PREC_NONE},
-//
-//    [M_PLUS] = {NULL, parser_binary, PREC_TERM},
-//    [M_MINUS] = {NULL, parser_binary, PREC_TERM},
-//
-//    [M_STAR] = {NULL, parser_binary, PREC_FACTOR},
-//    [M_SLASH] = {NULL, parser_binary, PREC_FACTOR},
-//    [M_MOD] = {NULL, parser_binary, PREC_FACTOR},
-//
-//    [M_POW] = {NULL, parser_binary, PREC_POWER},
-//
-//    [M_CONCAT] = {NULL, parser_binary, PREC_CONCAT},
-//
-//    //[M_INC] = {},
-//
-//
-//};
-
 // ===============================
 // Forward declarations
 // ===============================
@@ -37,10 +15,17 @@ static Expr* parser_int(Parser* P);
 static Expr* parser_float(Parser* P);
 static Expr* parser_string(Parser* P);
 static Expr* parser_literal(Parser* P);
+static Expr* parser_identifier(Parser* P);
+static Expr* parser_grouping(Parser* P);
+static Expr* parser_unary(Parser* P);
 static Expr* parser_binary(Parser* P, Expr* left);
+static Expr* parser_prefix(Parser* P);
+static Expr* parser_posfix(Parser* P, Expr* left);
 
 // Constructors
 static Expr* new_literal(Parser* P, Token token);
+static Expr* parser_name_expr(Parser* P, Token name);
+//static Expr* new_variable_expr(Parser* P, Token token);
 static Expr* new_binary(Parser* P, Expr* left, Token op, Expr* right);
 static Expr* new_unary(Parser* P, Expr* right, Token op);
 static Expr* new_fix(Parser* P, Token op, Expr* right, bool isPrefix);
@@ -49,24 +34,59 @@ static Expr* new_fix(Parser* P, Token op, Expr* right, bool isPrefix);
 static Stmt* parser_var(Parser* P, bool global);
 static Stmt* parser_if(Parser* P);
 static Stmt* parser_block(Parser* P);
+static Stmt* parser_expr_or_assignment_stmt(Parser* P);
+static Stmt* parser_assign(Parser* P, Expr* left);
+//static Stmt* parser_multi_assign(Parser* P, Expr* first);
+
 
 ParserRule rules[] = {
+    // int, float, string, boolean, identifier, (
     [M_V_INT] = {parser_int, NULL, PREC_NONE},
     [M_V_FLOAT] = {parser_float, NULL, PREC_NONE},
     [M_V_STRING] = {parser_string, NULL, PREC_NONE},
     [M_V_TRUE] = {parser_literal, NULL, PREC_NONE},
     [M_V_FALSE] = {parser_literal, NULL, PREC_NONE},
+    [M_V_IDENTIFIER] = {parser_identifier, NULL, PREC_NONE},
+    [M_LPAREN] = {parser_grouping, parser_grouping, PREC_NONE},
 
+    // <>
+    [M_CONCAT] = {NULL, parser_binary, PREC_CONCAT},
+
+    // or
+    [M_OR] = {NULL, parser_binary, PREC_OR},
+
+    // and
+    [M_AND] = {NULL, parser_binary, PREC_AND},
+
+    // ==, !=
+    [M_EQ] = {NULL, parser_binary, PREC_EQUALITY},
+    [M_NEQ] = {NULL, parser_binary, PREC_EQUALITY},
+
+    // <, <=, >, >=
+    [M_LT] = {NULL, parser_binary, PREC_COMPARISON},
+    [M_LTE] = {NULL, parser_binary, PREC_COMPARISON},
+    [M_GT] = {NULL, parser_binary, PREC_COMPARISON},
+    [M_GTE] = {NULL, parser_binary, PREC_COMPARISON},
+
+    // +, -
     [M_PLUS] = {NULL, parser_binary, PREC_TERM},
-    [M_MINUS] = {NULL, parser_binary, PREC_TERM},
+    [M_MINUS] = {parser_unary, parser_binary, PREC_TERM},
 
+    // *, /, //, %
     [M_STAR] = {NULL, parser_binary, PREC_FACTOR},
     [M_SLASH] = {NULL, parser_binary, PREC_FACTOR},
+    [M_FLOOR_DIV] = {NULL, parser_binary, PREC_FACTOR},
     [M_MOD] = {NULL, parser_binary, PREC_FACTOR},
 
+    // ^
     [M_POW] = {NULL, parser_binary, PREC_POWER},
 
-    [M_CONCAT] = {NULL, parser_binary, PREC_CONCAT},
+    // not
+    [M_NOT] = {parser_unary, NULL, PREC_UNARY},
+
+    // ++, --
+    [M_INC] = {parser_prefix, parser_posfix, PREC_POSTFIX},
+    [M_DEC] = {parser_prefix, parser_posfix, PREC_POSTFIX},
 
     //[M_EOF] = {NULL, NULL, PREC_NONE},
 
@@ -75,10 +95,16 @@ ParserRule rules[] = {
 
 };
 
+/*
+Auxiliary functions
+*/
 static void advance(Parser* P)
 {
     P->previous = P->current;
-    P->current = P->Tokens->data[++P->pos];
+    if (P->pos + 1 >= P->Tokens->count)
+        P->current = P->Tokens->data[P->Tokens->count];
+    else
+        P->current = P->Tokens->data[++P->pos];
 }
 
 static Token peek(Parser* P)
@@ -114,21 +140,64 @@ static void consume(Parser* P, LTokenType ttype, const char* expected)
         ////strncpy_s(got, P->src + P->current.location.begin.offset, P->current.length);
         ////strncpy();
         //got[P->current.length] = '\0';
-        size_t len = P->current.length;
+        //size_t len = P->current.length;
 
-        char* got = malloc(len + 1);  // espacio para '\0'
-        if (!got) return; // opcional pero correcto
+        //char* got = malloc(len + 1);  // espacio para '\0'
+        //if (!got) return; // opcional pero correcto
 
-        strncpy_s(
-            got,
-            len + 1,  // tamaño del buffer destino
-            P->src + P->current.location.begin.offset,
-            len
-        );
-        //print_token(P->src, P->current);
-        got[len] = '\0';
+        //strncpy_s(
+        //    got,
+        //    len + 1,  // tamaño del buffer destino
+        //    P->src + P->current.location.begin.offset,
+        //    len
+        //);
+        ////print_token(P->src, P->current);
+        //got[len] = '\0';
+        char got = getText(P->current.length, P->src, P->current.location.begin.offset);
         expectedButGot(expected, P->current.type == M_EOF ? "<eof>" : got, NULL, P->name, P->current.location);
         free(got);
+    }
+}
+
+static bool is_valid_stmt_expr(Expr* e)
+{
+    switch (e->expr_type)
+    {
+        case EXPR_PREFIX:
+        case EXPR_POSTFIX:
+            return true;
+        default:
+            return false;
+    }
+}
+
+static bool is_assignment_operator(LTokenType t)
+{
+    switch (t)
+    {
+        case M_ASSING: // =
+        case M_PLUS_ASSING: // +=
+        case M_MINUS_ASSING: // -=
+        case M_STAR_ASSING: // *=
+        case M_SLASH_ASSING: // /=
+        case M_FLOOR_DIV_ASSING: // //=
+        case M_CONCAT_ASSING: // <>=
+        case M_POW_ASSING: // ^=
+        case M_MOD_ASSING: // %=
+            return true;
+        default:
+            return false;
+    }
+}
+
+static bool isLValue(Expr* e)
+{
+    switch (e->expr_type)
+    {
+        case EXPR_NAME:
+            return true;
+        default:
+            return false;
     }
 }
 
@@ -138,13 +207,15 @@ static void consume(Parser* P, LTokenType ttype, const char* expected)
 
 static Expr* parser_expression(Parser* P)
 {
-    return parser_precedence(P, PREC_NONE);
+    Expr* expr = parser_precedence(P, PREC_NONE);
+    match(P, M_SEMICOLON);
+    return expr;
 }
 
 static Expr* parser_precedence(Parser* P, Precedence prec)
 {
     advance(P);
-    printf("AQUÍ -> %d, %d\n", P->previous.type, P->current.type);
+    //printf("AQUÍ -> %d, %d\n", P->previous.type, P->current.type);
     //ParserRule* rule = get_rule(P->previous.type);
     //if (rule == NULL) 
     //{ 
@@ -183,22 +254,35 @@ static Expr* parser_precedence(Parser* P, Precedence prec)
         );
         got[len] = '\0';
         
-        expectedButGot("identifier, int, float, string, literal", P->previous.type == M_EOF ? "<eof>" : got, " when parsing expression", P->name, P->previous.location);
+        expectedButGot("identifier", P->previous.type == M_EOF ? "<eof>" : got, " when parsing expression", P->name, P->previous.location);
         free(got);
         exit(1);
         //printf("nonononoono %d\n", P->previous.type); exit(1);/* error message */ 
     }
     Expr* left = prefix(P);
 
-    while (prec <= get_rule(P->current.type)->precedence)
-    {
-        advance(P);
+    ParserRule* newRule = get_rule(P->current.type);
 
-        InfixFn infix = get_rule(P->previous.type)->infix;
-        left = infix(P, left);
+    if (newRule != NULL)
+    {
+        while (!is_expr_terminator(P->current.type) && prec <= get_rule(P->current.type)->precedence)
+        {
+            InfixFn infix = get_rule(P->current.type)->infix;
+
+            if (infix == NULL)
+            {
+                //printf("a\n");
+                return left;
+            }
+
+            advance(P);
+
+            left = infix(P, left);
+        }
+
     }
 
-    print("===============");
+    //print("===============");
     return left;
 }
 
@@ -225,6 +309,11 @@ static Expr* parser_string(Parser* P)
 static Expr* parser_literal(Parser* P)
 {
     return new_literal(P, P->previous);
+}
+
+static Expr* parser_identifier(Parser* P)
+{
+    return parser_name_expr(P, P->previous);
 }
 
 static Expr* new_literal(Parser* P, Token token)
@@ -292,7 +381,7 @@ static Expr* new_unary(Parser* P, Expr* right, Token op)
     return (Expr*) unary;
 }
 
-static Expr* parser_prefix_int(Parser* P)
+static Expr* parser_prefix(Parser* P)
 {
     Token op = P->previous;
 
@@ -301,13 +390,13 @@ static Expr* parser_prefix_int(Parser* P)
     return new_fix(P, op, right, true);
 }
 
-static Expr* parser_posfix(Parser* P)
+static Expr* parser_posfix(Parser* P, Expr* left)
 {
     Token op = P->previous;
 
-    Expr* right = parser_precedence(P, PREC_UNARY);
+    //Expr* right = parser_precedence(P, PREC_UNARY);
 
-    return new_fix(P, op, right, false);
+    return new_fix(P, op, left, false);
 }
 
 static Expr* new_fix(Parser* P, Token op, Expr* right, bool isPre)
@@ -326,8 +415,23 @@ static Expr* new_fix(Parser* P, Token op, Expr* right, bool isPre)
 
 static Expr* parser_grouping(Parser* P)
 {
+    Location begin = P->previous.location;
     Expr* expr = parser_expression(P);
-    consume(P, M_RPAREN, "Expected ')'");
+    Location end = locationCPos(expr->base.location.end, expr->base.location.end);
+    if (P->current.type == M_RPAREN)
+    {
+        end = P->current.location;
+        advance(P);
+    }
+    else
+    {
+        // revisar que imprima bien, con ; y operandos imprime mal porque el parser_expression lo consume cuando no debería
+        print_token(P->src, P->previous);
+        char* got = getText(P->previous.length, P->src, P->previous.location.begin.offset);
+        expectedToClose(")", "(", got, " when parsing expression", P->name, begin, P->previous.location);
+    }
+    //consume(P, M_RPAREN, "')'");
+
 
     return expr;
 }
@@ -344,11 +448,6 @@ static Expr* parser_name_expr(Parser* P, Token name)
     return (Expr*) expr;
 }
 
-static Expr* new_variable_expr(Parser* P)
-{
-
-}
-
 /*
     STATEMENTS
 */
@@ -359,16 +458,24 @@ static Stmt* parser_statement(Parser* P)
     if (match(P, M_CONST)) return parser_var(P, true);
     if (match(P, M_IF)) return parser_if(P);
     if (match(P, M_LBRACE)) return parser_block(P);
+
+    //print("//////////");
+    //print_token(P->name, P->current);
+    //print("//////////");
+    return parser_expr_or_assignment_stmt(P);
+    syntaxError("Incomplete Statement", P->name, P->current.location);
+    exit(1);
 }
 
 static Stmt* parser_var(Parser* P, bool isConst)
 {
+    //print("entra a var");
     Position begin = P->previous.location.begin;
     Token tempNames[8];
     int nameCount = 0;
 
-    tempNames[nameCount++] = P->previous;
-    consume(P, M_V_IDENTIFIER, "identifier name");
+    tempNames[nameCount++] = P->current;
+    consume(P, M_V_IDENTIFIER, "identifier when parsing variable name");
 
     while (match(P, M_COMMA))
     {
@@ -377,7 +484,7 @@ static Stmt* parser_var(Parser* P, bool isConst)
             syntaxError("Too many variables (max 8)", P->name, locationCPos(tempNames[0].location.begin, tempNames[nameCount].location.end));
         }
         tempNames[nameCount++] = P->current;
-        consume(P, M_V_IDENTIFIER, "identifier name");
+        consume(P, M_V_IDENTIFIER, "identifier when parsing variable name");
     }
 
 
@@ -389,21 +496,22 @@ static Stmt* parser_var(Parser* P, bool isConst)
 
     if (match(P, M_ASSING))
     {
-        //printf("entra\n");
         tempValues[valuesAmount++] = parser_expression(P);
+        //printf("entra\n");
 
         while (match(P, M_COMMA))
         {
+            //printf("algo");
             if (valuesAmount >= 8)
             {
-                syntaxError("Too many variables (max 8)", P->name, locationCPos(tempNames[0].location.begin, tempNames[nameCount].location.end));
+                syntaxError("Too many variables (max 8)", P->name, locationCPos(tempNames[0].location.begin, tempNames[nameCount-1].location.end));
             }
             tempValues[valuesAmount++] = parser_expression(P);
         }
     }
     else if (isConst)
     {
-        syntaxError("const must have min one value", P->name, locationCPos(tempNames[0].location.begin, tempNames[nameCount].location.end));
+        syntaxError("const must have min one value", P->name, locationCPos(tempNames[0].location.begin, tempNames[nameCount-1].location.end));
     }
 
     Expr** values = arena_allocator(P->arena, sizeof(Expr*) * valuesAmount);
@@ -411,7 +519,7 @@ static Stmt* parser_var(Parser* P, bool isConst)
 
     StmtVar* stmt = arena_allocator(P->arena, sizeof(StmtVar));
 
-    stmt->stmt.base.location = valuesAmount > 0 ? locationCPos(names[0].location.begin, values[valuesAmount]->base.location.end) : locationCPos(names[0].location.begin, names[nameCount].location.end);
+    stmt->stmt.base.location = valuesAmount > 0 ? locationCPos(begin, values[valuesAmount-1]->base.location.end) : locationCPos(begin, names[nameCount-1].location.end);
     stmt->stmt.base.ttype = NODE_STMT;
     stmt->stmt.stmt_type = STMT_VAR;
     stmt->isConst = isConst;
@@ -447,9 +555,63 @@ static Stmt* parser_ChooseCompoundOrAssing(Parser* P)
     }
 }
 
-static Stmt* parser_assing(Parser* P, Expr* left)
+static Stmt* parser_assign(Parser* P, Expr* left)
 {
+    if (!isLValue(left))
+        printf("Aqui debe ir un mejor error\n");
 
+    Expr* tempNames[8];
+    tempNames[0] = left;
+    int namesCount = 1;
+
+    while (match(P, M_COMMA))
+    {
+        if (namesCount > 8)
+        {
+            printf("Mejor error para decir que más de 8 nombres\n");
+        }
+
+        Expr* name = parser_expression(P);
+        if (!isLValue(name))
+            printf("Aqui debe ir un mejor error 2\n");
+        tempNames[namesCount++] = name;
+    }
+
+    Expr* tempValues[8];
+    int valuesCount = 0;
+
+    if (match(P, M_ASSING))
+    {
+        Expr* expr = parser_expression(P);
+        tempValues[namesCount++] = expr;
+
+        while (match(P, M_COMMA))
+        {
+            if (valuesCount > 8)
+            {
+                printf("Mejor error para decir que más de 8 valores\n");
+            }
+            tempValues[valuesCount++] = parser_expression(P);
+        }
+
+    }
+
+
+    Expr** names = arena_allocator(P->arena, sizeof(Expr*) * namesCount);
+    memcpy(names, tempNames, sizeof(Expr*) * namesCount);
+
+    Expr** values = arena_allocator(P->arena, sizeof(Expr*) * valuesCount);
+    memcpy(values, tempValues, sizeof(Expr*) * valuesCount);
+
+    StmtAssign* stmt = arena_allocator(P->arena, sizeof(StmtAssign));
+
+    stmt->stmt.base.location = valuesCount > 0 ? locationCPos(tempNames[0]->base.location.begin, tempValues[valuesCount - 1]->base.location.end) : locationCPos(tempNames[0]->base.location.begin, tempNames[namesCount - 1]->base.location.begin);
+    stmt->stmt.base.ttype = NODE_STMT;
+    stmt->stmt.stmt_type = STMT_ASSING;
+    stmt->names = names;
+    stmt->nameCount = namesCount;
+    stmt->values = values;
+    stmt->valueCount = valuesCount;
 }
 
 static Stmt* parser_compound_assing(Parser* P, Expr* left)
@@ -478,9 +640,11 @@ static Stmt* parser_compound_assing(Parser* P, Expr* left)
 static Stmt* parser_if(Parser* P)
 {
     Position begin = P->previous.location.begin;
+    //print("condi1");
     Expr* condition = parser_expression(P);
+    //print("condi2");
     Stmt* ifBranch = parser_statement(P);
-
+    //print("pasa a");
     Stmt* elseBranch = NULL;
 
     if (match(P, M_ELSEIF))
@@ -490,7 +654,8 @@ static Stmt* parser_if(Parser* P)
 
     StmtIf* stmt = arena_allocator(P->arena, sizeof(StmtIf));
     
-    Position end = elseBranch != NULL ? elseBranch->base.location.end : ifBranch->base.location.end;
+    Position end = {0, 0, 0};///*elseBranch != NULL ? elseBranch->base.location.end : */ ifBranch->base.location.end;
+    //print("final");
 
     stmt->stmt.base.location = locationCPos(begin, end);
     stmt->stmt.base.ttype = NODE_STMT;
@@ -508,7 +673,7 @@ static Stmt* parser_block(Parser* P)
     Stmt* temp[64]; // ajustable
     int count = 0;
 
-    while ((P->current.type != M_RBRACE) || (P->current.type != M_EOF))
+    while ((P->current.type != M_RBRACE) && (P->current.type != M_EOF))
     {
         if (count >= 64)
         {
@@ -532,12 +697,50 @@ static Stmt* parser_block(Parser* P)
     block->statements = stmts;
     block->count = count;
 
-
     //block->base.kind = STMT_BLOCK;
     //block->statements = stmts;
     //block->count = count;
-
+    //print("fin del block");
     return (Stmt*) block;
+}
+
+static Stmt* parser_expr_or_assignment_stmt(Parser* P)
+{
+    Expr* first = parser_expression(P);
+
+    if (is_assignment_operator(P->current.type))
+        if (P->current.type == M_ASSING)
+            return parser_assign(P, first);
+        else
+            return parser_compound_assing(P, first);
+
+    if (match(P, M_COMMA))
+        return parser_assign(P, first);
+
+    match(P, M_SEMICOLON);
+
+    if (!(first->expr_type == EXPR_PREFIX || first->expr_type == EXPR_POSTFIX))
+        printf("algún error por aquí\n");
+
+    StmtExpr* stmt = arena_allocator(P->arena, sizeof(StmtExpr));
+    stmt->stmt.base.ttype = NODE_STMT;
+    stmt->stmt.base.location = first->base.location;
+    stmt->stmt.stmt_type = STMT_EXPR;
+    stmt->expr = first;
+
+    return (Stmt*) stmt;
+}
+
+static void parser_program(Parser* P)
+{
+    while (P->current.type != M_EOF)
+    {
+        parser_statement(P);
+        //print("esta en bucle");
+        print_token(P->src, P->current);
+        //print("1");
+        //break;
+    }
 }
 
 Parser* parser_init(TokenArray* Tokens, Arena* A, const char* name, const char* src)
@@ -563,17 +766,18 @@ Parser* parser_init(TokenArray* Tokens, Arena* A, const char* name, const char* 
 
 void parser_execute(Parser* P)
 {
-    printf("antes\n");
+    //printf("antes\n");
     //printf("VAR: %d, %d, %d, %d\n", M_VAR, P->previous.type, P->current.type, P->pos);
     //printf("%d, %d, %d \n", P->Tokens->data[0].type, P->Tokens->data[1].type, P->Tokens->data[2].type);
     //print_token(P->src, peek(P));
-    parser_statement(P);
-    print_token(P->src, P->current);
+    //parser_statement(P);
+    parser_program(P);
+    //print_token(P->src, P->current);
     //printf("%d, %d, %d\n", P->previous.type, P->current.type, P->pos);
-    printf("despues\n");
+    //printf("despues\n");
 }
 
-void parser_print(Parser* p, AST* ast)
+void parser_print(Parser* P)
 {
 
 }
