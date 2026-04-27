@@ -4,6 +4,7 @@
 #include "lexer.h"
 #include "ast.h"
 #include "allocator.h"
+#include "m.h"
 
 typedef struct
 {
@@ -74,7 +75,9 @@ typedef struct
 
 Parser* parser_init(TokenArray* Tokens, Arena* A, const char* name, const char* src);
 
-void parser_execute(Parser* P);
+Stmt* parser_execute(Parser* P);
 
-void parser_print(Parser* P);
+#ifdef DEBUG
+void parser_print(Parser* P, StmtBlock* block);
+#endif // DEBUG
 

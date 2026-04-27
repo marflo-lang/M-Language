@@ -233,13 +233,12 @@ int main(void)
         //printf("Optimizer lever: %d\n", config.optimizer_level);
         printf("Script: %s\n", config.script_path);
         Source* s = read_file(config.script_path);
+
+#if defined(DEBUG) && DEBUG == 1
         // Debug CLI
-        if (DEBUG)
-        {
             printf("src %s\n", s->src);
             printf("length %zd\n", s->length);
-        }
-
+#endif
         /*for (int i = 0; i <= s->length; i++)
         {
             printf("c = %c, d = %d\n", s->src[i], s->src[i]);
@@ -251,9 +250,10 @@ int main(void)
 
         Lexer* L = Lexer_init(s->src, config.script_path);
         TokenArray* Tokens = Lexer_execute(L);
+#if (defined(DEBUG) && DEBUG == 1) && (defined(LEXER_DEBUG) && LEXER_DEBUG == 1)
         // Debug Lexer
-        if (DEBUG) //{}
             Lexer_print(L, Tokens);
+#endif
 
         /*
         ========== Arena Allocator ==========
@@ -268,7 +268,12 @@ int main(void)
         //-*
         printf("%d, %d, %d \n", Tokens->data[0].type, Tokens->data[1].type, Tokens->data[2].type);
         Parser* P = parser_init(Tokens, &A, config.script_path, s->src);
-        parser_execute(P);
+        Stmt* stmt = parser_execute(P);
+
+#if (defined(DEBUG) && DEBUG == 1) && (defined(PARSER_DEBUG) && PARSER_DEBUG == 1)
+        parser_print(P, stmt);
+#endif // DEBUG
+
 
         //*/
         free(Tokens);

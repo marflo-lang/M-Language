@@ -1,4 +1,5 @@
 #pragma once
+#include "m.h"
 //#include <>
 
 typedef struct
@@ -174,6 +175,10 @@ TokenArray* Lexer_execute(Lexer* L);
 char* getText(size_t len, const char* src, int offset);
 
 // static
+#if (defined(DEBUG) && DEBUG == 1) && (defined(LEXER_DEBUG) && LEXER_DEBUG == 1)
 void Lexer_print(Lexer* L, TokenArray* Tokens);
+#endif
 
+#if defined(DEBUG) && DEBUG == 1
 void print_token(const char* src, Token token);
+#endif

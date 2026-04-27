@@ -662,6 +662,7 @@ Lexer* Lexer_init(const char* src, const char* name)
     return L;
 }
 
+#if defined(DEBUG) && DEBUG == 1
 void print_token(const char* src, Token token)
 {
     printf("Type: %d '", token.type);
@@ -713,6 +714,10 @@ void print_token(const char* src, Token token)
     printf("\n");
 }
 
+#endif
+
+#if (defined(DEBUG) && DEBUG == 1) && (defined(LEXER_DEBUG) && LEXER_DEBUG == 1)
+
 void Lexer_print(Lexer* L, TokenArray* Tokens)
 {
     printf("===== LEXER DEBUG =====\n");
@@ -762,6 +767,8 @@ void Lexer_print(Lexer* L, TokenArray* Tokens)
         printf("===== END LEXER DEBUG =====\n");
 }
 
+#endif
+
 int main2(void)
 {
     /*Position p1 = pos(5, 3, 6) /*tes(5, 3, 6)*-/;
@@ -780,7 +787,7 @@ int main2(void)
     char* src = "59 + 6.3       * \n 3009.3063 / 'hola m \n '   \n - 56.3 \t ";
     Lexer* L = Lexer_init(src, "internal_test.m");
     TokenArray* Tokens = Lexer_execute(L);
-    Lexer_print(L, Tokens);
+    //Lexer_print(L, Tokens);
     printf("Finish\n");
     return 0;
 }

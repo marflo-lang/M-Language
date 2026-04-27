@@ -7,7 +7,7 @@
 // ===============================
 
 // Pratt parser
-static Expr* parser_precedence(Parser* P, Precedence precedence);
+static Expr* parser_precedence(Parser* P, Precedence prec);
 static ParserRule* get_rule(LTokenType type);
 
 // Prefix / Infix
@@ -28,15 +28,24 @@ static Expr* parser_name_expr(Parser* P, Token name);
 //static Expr* new_variable_expr(Parser* P, Token token);
 static Expr* new_binary(Parser* P, Expr* left, Token op, Expr* right);
 static Expr* new_unary(Parser* P, Expr* right, Token op);
-static Expr* new_fix(Parser* P, Token op, Expr* right, bool isPrefix);
+static Expr* new_fix(Parser* P, Token op, Expr* right, bool isPre);
 
 // Statements
-static Stmt* parser_var(Parser* P, bool global);
+static Stmt* parser_var(Parser* P, bool isConst);
 static Stmt* parser_if(Parser* P);
 static Stmt* parser_block(Parser* P);
 static Stmt* parser_expr_or_assignment_stmt(Parser* P);
 static Stmt* parser_assign(Parser* P, Expr* left);
 //static Stmt* parser_multi_assign(Parser* P, Expr* first);
+
+
+#ifdef DEBUG
+// Debug
+static void print_branch(const char* prefix, bool isLast);
+static void build_prefix(char* buffer, const char* prefix, bool isLast);
+static void print_expr(Parser* P, Expr* e, const char* prefix, bool isLast);
+static void print_stmt(Parser* P, Stmt* stmt, const char* prefix, bool isLast);
+#endif // DEBUG
 
 
 ParserRule rules[] = {
@@ -426,7 +435,7 @@ static Expr* parser_grouping(Parser* P)
     else
     {
         // revisar que imprima bien, con ; y operandos imprime mal porque el parser_expression lo consume cuando no debería
-        print_token(P->src, P->previous);
+        //print_token(P->src, P->previous);
         char* got = getText(P->previous.length, P->src, P->previous.location.begin.offset);
         expectedToClose(")", "(", got, " when parsing expression", P->name, begin, P->previous.location);
     }
@@ -612,6 +621,8 @@ static Stmt* parser_assign(Parser* P, Expr* left)
     stmt->nameCount = namesCount;
     stmt->values = values;
     stmt->valueCount = valuesCount;
+
+    return (Stmt*) stmt;
 }
 
 static Stmt* parser_compound_assing(Parser* P, Expr* left)
@@ -731,16 +742,46 @@ static Stmt* parser_expr_or_assignment_stmt(Parser* P)
     return (Stmt*) stmt;
 }
 
-static void parser_program(Parser* P)
+static Stmt* parser_program(Parser* P)
 {
+    Stmt* tempStmts[1024];
+    int stmtCount = 0;
     while (P->current.type != M_EOF)
     {
-        parser_statement(P);
+        if (stmtCount >= 1024)
+        {
+            printErr("Demasiados Statements en el script principal", P->name, 3);
+            exit(1);
+        }
+        Stmt* stmt = parser_statement(P);
+        tempStmts[stmtCount++] = stmt;
+
         //print("esta en bucle");
-        print_token(P->src, P->current);
+        //print_token(P->src, P->current);
         //print("1");
         //break;
     }
+
+    Stmt** stmts = arena_allocator(P->arena, sizeof(Stmt*) * stmtCount);
+    memcpy(stmts, tempStmts, sizeof(Stmt*) * stmtCount);
+
+    StmtBlock* block = arena_allocator(P->arena, sizeof(StmtBlock));
+
+    if (stmtCount > 0)
+    {
+        block->stmt.base.location = locationCPos(stmts[0]->base.location.begin, stmts[stmtCount - 1]->base.location.end);
+    }
+    else
+    {
+        block->stmt.base.location = P->current.location;
+    }
+
+    block->stmt.base.ttype = NODE_STMT;
+    block->stmt.stmt_type = STMT_BLOCK;
+    block->statements = stmts;
+    block->count = stmtCount;
+
+    return (Stmt*) block;
 }
 
 Parser* parser_init(TokenArray* Tokens, Arena* A, const char* name, const char* src)
@@ -764,22 +805,290 @@ Parser* parser_init(TokenArray* Tokens, Arena* A, const char* name, const char* 
     return P;
 }
 
-void parser_execute(Parser* P)
+Stmt* parser_execute(Parser* P)
 {
     //printf("antes\n");
     //printf("VAR: %d, %d, %d, %d\n", M_VAR, P->previous.type, P->current.type, P->pos);
     //printf("%d, %d, %d \n", P->Tokens->data[0].type, P->Tokens->data[1].type, P->Tokens->data[2].type);
     //print_token(P->src, peek(P));
     //parser_statement(P);
-    parser_program(P);
+    return parser_program(P);
     //print_token(P->src, P->current);
     //printf("%d, %d, %d\n", P->previous.type, P->current.type, P->pos);
     //printf("despues\n");
 }
 
-void parser_print(Parser* P)
+#if (defined(DEBUG) && DEBUG == 1) && (defined(PARSER_DEBUG) && PARSER_DEBUG == 1)
+
+static void print_indent(int indent)
 {
-    P->arena;
+    for (int i = 0; i < indent; i++)
+    {
+        printf("  ");
+    }
 }
 
+static void print_branch(const char* prefix, bool isLast)
+{
+    printf("%s", prefix);
+    printf(isLast ? " `-- " : " |-- ");
+}
+
+static void build_prefix(char* buffer, const char* prefix, bool isLast)
+{
+    strcpy_s(buffer, 256, prefix);
+
+    if (isLast)
+        strcat_s(buffer, 256, "     ");  // espacio vacío
+    else
+        strcat_s(buffer, 256, " |   ");  // línea vertical
+}
+
+static void print_expr(Parser* P, Expr* e, const char* prefix, bool isLast)
+{
+    if (!e) return;
+
+    print_branch(prefix, isLast);
+    //print_indent(indent);
+
+    switch (e->expr_type)
+    {
+        case EXPR_BINARY:
+        {
+            BinaryExpr* binary = (BinaryExpr*) e;
+            printf("Binary (%.*s)\n", binary->op.length, &P->src[binary->op.location.begin.offset]);
+
+            char newPrefix[256];
+            build_prefix(newPrefix, prefix, isLast);
+
+            print_expr(P, binary->left, newPrefix, false);
+            print_expr(P, binary->right, newPrefix, true);
+            break;
+        }
+        case EXPR_UNARY:
+        {
+            UnaryExpr* unary = (UnaryExpr*) e;
+            printf("Unary (%.*s)\n", unary->op.length, &P->src[unary->op.location.begin.offset]);
+
+            char newPrefix[256];
+            build_prefix(newPrefix, prefix, isLast);
+
+            //print_expr(P, unary->right, indent + 1);
+            print_expr(P, unary->right, newPrefix, true);
+            break;
+        }
+        case EXPR_LITERAL:
+        {
+            LiteralExpr* literal = (LiteralExpr*) e;
+            printf("Literal (%.*s)\n", literal->value.length, &P->src[literal->value.location.begin.offset]);
+            break;
+        }
+        case EXPR_NAME:
+        {
+            NameExpr* name = (NameExpr*) e;
+            printf("Name Expr (%.*s)\n", name->name.length, &P->src[name->name.location.begin.offset]);
+            break;
+        }
+        case EXPR_PREFIX:
+        {
+            FixExpr* prefixE = (FixExpr*) e;
+            printf("Prefix (%.*s)\n", prefixE->op.length, &P->src[prefixE->op.location.begin.offset]);
+            
+            //print_indent(indent + 1);
+            char targetPrefix[256];
+            build_prefix(targetPrefix, prefix, isLast);
+            print_branch(targetPrefix, true);
+            printf("Target: \n");
+            char newPrefix[256];
+            build_prefix(newPrefix, targetPrefix, true);
+            //print_expr(P, prefix->target, indent + 2);
+            print_expr(P, prefixE->target, newPrefix, true);
+            break;
+        }
+        case EXPR_POSTFIX:
+        {
+            FixExpr* postfix = (FixExpr*)e;
+            printf("Postfix (%.*s)\n", postfix->op.length, &P->src[postfix->op.location.begin.offset]);
+
+            //print_indent(indent + 1);
+            char targetPrefix[256];
+            build_prefix(targetPrefix, prefix, isLast);
+            print_branch(targetPrefix, true);
+            printf("Target: \n");
+            //print_expr(P, postfix->target, indent + 2);
+            char newPrefix[256];
+            build_prefix(newPrefix, targetPrefix, true);
+            print_expr(P, postfix->target, newPrefix, true);
+            break;
+        }
+    }
+}
+
+static void print_stmt(Parser* P, Stmt* stmt, const char* prefix, bool isLast)
+{
+    if (!stmt) return;
+
+    print_branch(prefix, isLast);
+    //print_indent(indent);
+
+    switch (stmt->stmt_type)
+    {
+        case STMT_VAR:
+        {
+            StmtVar* var = (StmtVar*) stmt;
+            printf("%s\n", var->isConst ? "const" : "var");
+
+            char newPrefix[256];
+            build_prefix(newPrefix, prefix, isLast);
+
+            print_branch(newPrefix, false);
+            //print_indent(indent + 1);
+            printf("Names:\n");
+            char namesPrefix[256];
+            build_prefix(namesPrefix, newPrefix, false);
+            for (int i = 0; i < var->namesCount; i++)
+            {
+                print_branch(namesPrefix, i == var->namesCount - 1);
+                //print_indent(indent + 2);
+                printf("%.*s\n", var->names[i].length, &P->src[var->names[i].location.begin.offset]);
+            }
+            print_branch(newPrefix, true);
+            //print_indent(indent + 1);
+            printf("Vales:\n");
+            char valuesPrefix[256];
+            build_prefix(valuesPrefix, newPrefix, true);
+            for (int i = 0; i < var->valuesCount; i++)
+            {
+                print_expr(P, var->values[i], valuesPrefix, i == var->valuesCount - 1);
+                //print_expr(P, var->values[i], indent + 2);
+            }
+            break;
+        }
+        case STMT_IF:
+        {
+
+            StmtIf* ifnode = (StmtIf*) stmt;
+            printf("If\n");
+            //print_indent(indent + 1);
+            char conditionPrefix[256];
+            build_prefix(conditionPrefix, prefix, isLast);
+            print_branch(conditionPrefix, false);
+            printf("condition: \n");
+            //print_expr(P, ifnode->condition, indent + 2);
+            char exprPrefix[256];
+            build_prefix(exprPrefix, conditionPrefix, false);
+            print_expr(P, ifnode->condition, exprPrefix, true);
+            //print_indent(indent + 1);
+            char ifBranchPrefix[256];
+            build_prefix(ifBranchPrefix, prefix, isLast);
+            print_branch(ifBranchPrefix, ifnode->elseBranch == NULL);
+            printf("If Branch:\n");
+            //print_stmt(P, ifnode->ifBranch, indent + 2);
+            char trueBlockPrefix[256];
+            build_prefix(trueBlockPrefix, ifBranchPrefix, ifnode->elseBranch == NULL);
+            print_stmt(P, ifnode->ifBranch, trueBlockPrefix, true);
+            if (ifnode->elseBranch)
+            {
+                //print_indent(indent + 1);
+                char elseBranchPrefix[256];
+                build_prefix(elseBranchPrefix, prefix, isLast);
+                print_branch(elseBranchPrefix, true);
+                printf("Else Branch\n");
+                //print_stmt(P, ifnode->elseBranch, indent + 2);
+                char falseBlockPrefix[256];
+                build_prefix(falseBlockPrefix, elseBranchPrefix, true);
+                print_stmt(P, ifnode->elseBranch, falseBlockPrefix, true);
+            }
+            break;
+        }
+        case STMT_EXPR:
+        {
+            StmtExpr* expr = (StmtExpr*) stmt;
+            printf("Statement Expression\n");
+
+            //print_indent(indent + 1);
+            char newPrefix[256];
+            build_prefix(newPrefix, prefix, isLast);
+            //print_expr(P, expr->expr, indent + 2);
+            print_expr(P, expr->expr, newPrefix, true);
+        }
+            break;
+        case STMT_ASSING:
+        {
+            StmtAssign* assign = (StmtAssign*) stmt;
+            printf("Assign\n");
+
+            //print_indent(indent + 1);
+            printf("Targets:\n");
+            for (int i = 0; i < assign->nameCount; i++)
+            {
+                //print_indent(indent + 2);
+                printf("aquí hay un error en el AST, para ser más específicos en el assign->names[i].length\n");
+                //printf("%.*s\n", assign->names[i].length, &P->src[assign->names[i].location.begin.offset]);
+                //printf("%d\n", assign->names[i].length);
+            }
+
+            //print_indent(indent + 1);
+            printf("Vales:\n");
+            for (int i = 0; i < assign->valueCount; i++)
+            {
+                //print_expr(P, assign->values[i], indent + 2);
+            }
+            break;
+        }
+        case STMT_BLOCK:
+        {
+            printf("Block\n");
+            StmtBlock* block = (StmtBlock*) stmt;
+
+            char newPrefix[256];
+            build_prefix(newPrefix, prefix, isLast);
+
+            for (int i = 0; i < block->count; i++)
+            {
+                //print_stmt(P, block->statements[i], indent + 1);
+                print_stmt(P, block->statements[i], newPrefix, i == block->count - 1);
+
+            }
+            break;
+        }
+        case STMT_COMPOUND_ASSING:
+        {
+            StmtCompoundAssing* compoundassing = (StmtCompoundAssing*) stmt;
+            printf("Compound Assing (%.*s)\n", compoundassing->op.length, &P->src[compoundassing->op.location.begin.offset]);
+
+            //print_indent(indent + 1);
+            char targetPrefix[256];
+            build_prefix(targetPrefix, prefix, isLast);
+            print_branch(targetPrefix, false);
+            printf("Target:\n");
+
+            char exprPrefix[256];
+            build_prefix(exprPrefix, targetPrefix, false);
+            //print_expr(P, compoundassing->target, indent + 2);
+            print_expr(P, compoundassing->target, exprPrefix, true);
+            //print_indent(indent + 1);
+            char valuePrefix[256];
+            build_prefix(valuePrefix, prefix, isLast);
+            print_branch(valuePrefix, true);
+            printf("Value:\n");
+            //print_expr(P, compoundassing->target, indent + 2);
+            char exprVPrefix[256];
+            build_prefix(exprVPrefix, valuePrefix, true);
+            print_expr(P, compoundassing->value, exprVPrefix, true);
+            break;
+        }
+
+    }
+}
+
+void parser_print(Parser* P, StmtBlock* block)
+{
+    printf("===== PARSER DEBUG =====\n");
+    printf("----- AST nodes -----\n");
+    print_stmt(P, block, "", true);
+    printf("===== END PARSER DEBUG =====\n");
+}
+
+#endif // DEBUG
 
