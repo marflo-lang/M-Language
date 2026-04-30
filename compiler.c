@@ -293,9 +293,9 @@ int compiler_expr(Compiler* C, Expr* expr)
 
             switch (unary->op.type)
             {
-                case M_MINUS: op = IR_SUB; break; // temporal
-                //case M_NOT: op = 
-                default: op = IR_SUB; break; // temporal
+                case M_MINUS: op = IR_UNM; break;
+                case M_NOT: op = IR_NOT; break;
+                default: op = IR_UNM; break; // temporal
             }
 
             ir_emit(&C->ir, op, r, 0, 0);

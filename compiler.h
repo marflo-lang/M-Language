@@ -22,6 +22,9 @@ typedef enum
     IR_IDIV,        // A, B, C        R(A) = R(B) // R(C)
     IR_MOD,         // A, B, C        R(A) = R(B) % R(C)
     IR_POW,         // A, B, C        R(A) = R(B) ^ R(C)
+    IR_CONCAT,      // A, B, C        R(A) = R(B) <> R(C)
+    IR_UNM,         // A, B              R(A) = -R(B)
+    IR_NOT,         // A, B            R(A) = not R(B)
 
     // Comparaciones
     IR_EQ,          // A, B, C        R(A) = R(B) == R(C)
