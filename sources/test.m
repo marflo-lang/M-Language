@@ -1,17 +1,10 @@
-var x = 3
 
-if x > 6 {
-    x -= x
-} elseif x < 0 {
-    x += x * x
-} else {
-    x *= 3 - 6 * (x + 1)
-}
+var x = true * 6.39856 + 3 / false
 
-const y = 3 * x
-y++
+var y = x * "hola mundo" + x
 
-var z = ++y
+y *= 3
 
-var a, b, c = not z, -6, -15 * 3
+var z
+
 

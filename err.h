@@ -2,6 +2,7 @@
 #include "lexer.h"
 #include "print.h"
 #include <stdio.h>
+#include <stdarg.h>
 #ifdef _WIN32
 #include <windows.h>
 #endif
@@ -22,4 +23,7 @@ void illegalCharacter(const char character, const char* name, Location location)
 void syntaxError(const char* message, const char* name, Location location);
 void expectedButGot(const char* expected, const char* got, const char* context, const char* name, Location location);
 void expectedToClose(const char* expected, const char* close, const char* got, const char* context, const char* name, Location begin, Location exp);
+
+// Errores del Compiler
+void compilerError(const char* message, const char* name, Location location, ...);
 

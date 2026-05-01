@@ -100,12 +100,20 @@ typedef struct
 
 typedef struct
 {
+    Location* data;
+    int count;
+    int capacity;
+} LocationInstructions;
+
+typedef struct
+{
     IRList ir;
     const char* src;
     const char* name;
 
     SymbolTable symbol;
     ConstTable constants;
+    LocationInstructions locations;
     int next_reg;
     int next_const;
 } Compiler;
@@ -114,7 +122,13 @@ typedef struct
 void ir_init(IRList* list);
 void symbols_init(SymbolTable* T);
 void constants_init(ConstTable* c);
-void compiler_init(Compiler* C, const char* src, const char* name);
+void locations_init(LocationInstructions* l);
+Compiler* compiler_init(const char* src, const char* name);
 int compiler_expr(Compiler* C, Expr* expr);
 void compiler_stmt(Compiler* C, Stmt* stmt);
+void compiler_program(Compiler* C, Stmt* stmt);
+
+#if (defined(DEBUG) && DEBUG == 1) && (defined(COMPILER_DEBUG) && COMPILER_DEBUG == 1)
+void compiler_print(Compiler* C);
+#endif 
 

@@ -19,7 +19,7 @@ static void printEndFormatError(Location location)
     if (location.begin.line == location.end.line)
         printf("to column %d", location.end.column);
     else
-        printf("to line %d, column %d", location.end.line, location.end.column);
+        printf("to line %d column %d", location.end.line, location.end.column);
     printf("\033[0m");
     printf("\n");
 }
@@ -126,4 +126,21 @@ void expectedToClose(const char* expected, const char* close, const char* got, c
     printf("\n");
 }
 
-
+// Compiler Error
+void compilerError(const char* message, const char* name, Location location, ...)
+{
+    printStartFormatError(name);
+    printf("\033[0m");
+    printf("\033[4;31m");
+    printf("Compiler Error:");
+    printf("\033[0m");
+    printf("\033[31m");
+    printf(" ");
+    va_list args;
+    va_start(args, message);
+    vprintf(message, args);
+    va_end(args);
+    printf(" ");
+    printEndFormatError(location);
+    exit(1);
+}

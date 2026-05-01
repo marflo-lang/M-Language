@@ -8,6 +8,7 @@
 #include "cli.h"
 #include "lexer.h"
 #include "parser.h"
+#include "compiler.h"
 #include "print.h"
 
 static char* trim_left(char* str)
@@ -272,9 +273,20 @@ int main(void)
 
 #if (defined(DEBUG) && DEBUG == 1) && (defined(PARSER_DEBUG) && PARSER_DEBUG == 1)
         parser_print(P, stmt);
-#endif // DEBUG
+#endif
 
+        /*
+        ========== Compiler ==========
+        */
 
+        Compiler* C = compiler_init(s->src, config.script_path);
+        compiler_program(C, stmt);
+#if (defined(DEBUG) && DEBUG == 1) && (defined(COMPILER_DEBUG) && COMPILER_DEBUG == 1)
+        compiler_print(C);
+#endif 
+
+        //compilerError("Esto es una prueba %s, probando %d, bye %c", "test", locationCNum(1, 2, 3, 4, 5, 6), "prueba123456", 58, 'M');
+        //compilerError("Variable '%.*s' has not yet been declared. Consider declaring it before using it", "test2", locationCNum(1, 2, 3, 4, 5, 6), 5, &s->src[2]);
         //*/
         free(Tokens);
         free(L);
