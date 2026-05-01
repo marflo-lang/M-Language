@@ -22,6 +22,16 @@ static void consume(Lexer* L)
         //L->current = '\0';
 }
 
+static void consumeNoLine(Lexer* L)
+{
+    L->lastPosition = pos(L->line, L->column, L->position);
+    L->position++;
+    L->column++;
+    L->current = L->src[L->position];
+    //if (L->position >= L->length)
+        //L->current = '\0';
+}
+
 static char* peek(Lexer* L)
 {
     if (L->position + 1 >= L->length) return '\0';
@@ -62,6 +72,25 @@ static void skipWhiteSpace(Lexer* L)
     }
 }
 
+static void skipShortComments(Lexer* L)
+{
+    //printf("entró\n");
+    while (L->current != '\n')
+    {
+        consumeNoLine(L);
+        //printf("'%c'\n", L->current);
+    }
+    consume(L); // \n
+}
+
+static void skipLongComment(Lexer* L)
+{
+    while (L->current != '*' && peek(L) != '/')
+        consume(L);
+    consume(L); // *
+    consume(L); // /
+}
+
 
 // cambiar al switch principal debido a que se queda en el stack
 static Token makeString(Lexer* L, char quote, Position pos)
@@ -77,7 +106,7 @@ static Token makeString(Lexer* L, char quote, Position pos)
     {
         if (L->current == '\\')
         {
-            consume(L);
+            consumeNoLine(L);
             if (L->current == '\n')
                 break;
             consume(L);
@@ -97,7 +126,7 @@ static Token makeString(Lexer* L, char quote, Position pos)
             break;
         }
 
-        consume(L);
+        consumeNoLine(L);
     }
     
     //consume(L);
@@ -148,8 +177,12 @@ static Token makeNumber(Lexer* L, Position pos)
         ttype = M_V_FLOAT;
         consume(L);
 
-        while (isdigit(L->current))
+        while (isdigit(L->current) || L->current == '.')
+        {
+            if (L->current == '.')
+                ttype = M_V_MALFORMED_NUMBER;
             consume(L);
+        }
     }
     Location loc = locationCPosNum(pos, L->line, L->column, L->position);
     /*if (loc == NULL)
@@ -267,7 +300,8 @@ static LTokenType identifierType(Lexer* L, int start, int length)
 
 static Token makeError(Lexer* L, const char* context, Position pos)
 {
-    Token err = { .length = L->position - pos.offset, .location = locationCPos(pos, L->lastPosition), .type = M_ERROR };
+    //Token err = { .length = L->position - pos.offset, .location = locationCPos(pos, L->lastPosition), .type = M_ERROR };
+    Token err = { .length = L->position - pos.offset, .location = locationCPosNum(pos, L->line, L->column, L->position), .type = M_ERROR };
     return err;
 }
 
@@ -365,7 +399,9 @@ static Token scanToken(Lexer* L)
             {
                 // /* Long Start Comment
                 // change to makeLongComment(L, begin)
-                return makeToken(L, M_LONG_COMMENT_START, begin);
+                Token t = makeToken(L, M_LONG_COMMENT_START, begin);
+                skipLongComment(L);
+                return t;
             }
             else
             {
@@ -449,7 +485,7 @@ static Token scanToken(Lexer* L)
             else
             {
                 // Error no hay uso para ! por si solo
-                illegalCharacter(c, L->name, locationCPos(L->lastPosition, L->lastPosition));
+                illegalCharacter(c, L->name, locationCPosNum(begin, L->line, L->column, L->position));
                 return makeError(L, "IllegalCharacterError", begin);
                 //return makeToken(L, M_ERROR, begin);
             }
@@ -486,7 +522,9 @@ static Token scanToken(Lexer* L)
         case '#':
             // # short comment
             // change to makeShortComment(L, begin)
-            return makeToken(L, M_SHORT_COMMENT, begin);
+            Token t = makeToken(L, M_SHORT_COMMENT, begin);
+            skipShortComments(L);
+            return t;
         case '\0':
             //printf("Mmmm\n");
             return makeEOF(L, begin);
@@ -508,8 +546,8 @@ static Token scanToken(Lexer* L)
                 //return makeEOF(L, begin);
             // Error simbol invalid
             //printErr("Character  invalid", "Lexer", 3);
-            illegalCharacter(c, L->name, locationCPos(L->lastPosition, L->lastPosition));
-            printf("%c\n", L->current);
+            illegalCharacter(c, L->name, locationCPosNum(begin, L->line, L->column, L->position));
+            //printf("%c\n", L->current);
             return makeError(L, "IllegalCharacterError", begin);
             //exit(1);
             //consume(L);
@@ -670,6 +708,8 @@ void print_token(const char* src, Token token)
         printf("int");
     else if (token.type == M_V_FLOAT)
         printf("float");
+    else if (token.type == M_V_MALFORMED_NUMBER)
+        printf("Malformed Number");
     else if (token.type == M_V_STRING)
         printf("String");
     else if (token.type == M_V_UNFINISHED_STRING)
@@ -678,7 +718,11 @@ void print_token(const char* src, Token token)
         printf("ERROR");
     else if (token.type == M_EOF)
         printf("<eof>");
-    else if (token.type >= 15)
+    else if (token.type == M_SHORT_COMMENT)
+        printf("Short Comment");
+    else if (token.type == M_LONG_COMMENT_START)
+        printf("Start Long Comment");
+    else if (token.type >= M_PLUS)
         printf("Operand");
     else if (token.type == M_V_IDENTIFIER)
         printf("identifier");

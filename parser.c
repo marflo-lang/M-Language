@@ -21,6 +21,7 @@ static Expr* parser_unary(Parser* P);
 static Expr* parser_binary(Parser* P, Expr* left);
 static Expr* parser_prefix(Parser* P);
 static Expr* parser_posfix(Parser* P, Expr* left);
+static Expr* parser_expr_error(Parser* P);
 
 // Constructors
 static Expr* new_literal(Parser* P, Token token);
@@ -36,6 +37,7 @@ static Stmt* parser_if(Parser* P);
 static Stmt* parser_block(Parser* P);
 static Stmt* parser_expr_or_assignment_stmt(Parser* P);
 static Stmt* parser_assign(Parser* P, Expr* left);
+static Stmt* parser_stmt_error(Parser* P, Expr* expr);
 //static Stmt* parser_multi_assign(Parser* P, Expr* first);
 
 
@@ -52,7 +54,9 @@ ParserRule rules[] = {
     // int, float, string, boolean, identifier, (
     [M_V_INT] = {parser_int, NULL, PREC_NONE},
     [M_V_FLOAT] = {parser_float, NULL, PREC_NONE},
+    [M_V_MALFORMED_NUMBER] = {parser_expr_error, NULL, PREC_NONE},
     [M_V_STRING] = {parser_string, NULL, PREC_NONE},
+    [M_V_UNFINISHED_STRING] = {parser_expr_error, NULL, PREC_NONE},
     [M_V_TRUE] = {parser_literal, NULL, PREC_NONE},
     [M_V_FALSE] = {parser_literal, NULL, PREC_NONE},
     [M_V_IDENTIFIER] = {parser_identifier, NULL, PREC_NONE},
@@ -265,7 +269,9 @@ static Expr* parser_precedence(Parser* P, Precedence prec)
         
         expectedButGot("identifier", P->previous.type == M_EOF ? "<eof>" : got, " when parsing expression", P->name, P->previous.location);
         free(got);
-        exit(1);
+        //exit(1);
+        //printf("========line: %d, column: %d, offset: %d==============\n", P->previous.location.end.line, P->previous.location.begin.column, P->previous.location.begin.offset);
+        return parser_expr_error(P);
         //printf("nonononoono %d\n", P->previous.type); exit(1);/* error message */ 
     }
     Expr* left = prefix(P);
@@ -322,6 +328,7 @@ static Expr* parser_literal(Parser* P)
 
 static Expr* parser_identifier(Parser* P)
 {
+    //printf("========line: %d, column: %d, offset: %d==============\n", P->previous.location.end.line, P->previous.location.begin.column, P->previous.location.begin.offset);
     return parser_name_expr(P, P->previous);
 }
 
@@ -457,6 +464,20 @@ static Expr* parser_name_expr(Parser* P, Token name)
     return (Expr*) expr;
 }
 
+static Expr* parser_expr_error(Parser* P)
+{
+    ErrorExpr* error = arena_allocator(P->arena, sizeof(ErrorExpr));
+
+    error->expr.base.ttype = NODE_EXPR;
+    error->expr.base.location = P->previous.location;
+    //printf("========line: %d, column: %d, offset: %d==============\n", P->previous.location.end.line, P->previous.location.begin.column, P->previous.location.begin.offset);
+    error->expr.expr_type = EXPR_ERROR;
+    error->token = P->previous;
+    error->message = "Expected 'identifier', but got '%s'";
+
+    return (Expr*) error;
+}
+
 /*
     STATEMENTS
 */
@@ -467,6 +488,8 @@ static Stmt* parser_statement(Parser* P)
     if (match(P, M_CONST)) return parser_var(P, true);
     if (match(P, M_IF)) return parser_if(P);
     if (match(P, M_LBRACE)) return parser_block(P);
+    if (match(P, M_SHORT_COMMENT)) return parser_statement(P);
+    if (match(P, M_LONG_COMMENT_START)) return parser_statement(P);
 
     //print("//////////");
     //print_token(P->name, P->current);
@@ -491,6 +514,7 @@ static Stmt* parser_var(Parser* P, bool isConst)
         if (nameCount + 1 >= 8)
         {
             syntaxError("Too many variables (max 8)", P->name, locationCPos(tempNames[0].location.begin, tempNames[nameCount].location.end));
+            break;
         }
         tempNames[nameCount++] = P->current;
         consume(P, M_V_IDENTIFIER, "identifier when parsing variable name");
@@ -513,7 +537,8 @@ static Stmt* parser_var(Parser* P, bool isConst)
             //printf("algo");
             if (valuesAmount >= 8)
             {
-                syntaxError("Too many variables (max 8)", P->name, locationCPos(tempNames[0].location.begin, tempNames[nameCount-1].location.end));
+                syntaxError("Too many values (max 8)", P->name, locationCPos(tempValues[0]->base.location.begin, tempValues[valuesAmount-1]->base.location.end));
+                break;
             }
             tempValues[valuesAmount++] = parser_expression(P);
         }
@@ -540,34 +565,34 @@ static Stmt* parser_var(Parser* P, bool isConst)
     return (Stmt*) stmt;
 }
 
-static Stmt* parser_ChooseCompoundOrAssing(Parser* P)
-{
-    if (P->previous.type == M_V_IDENTIFIER)
-    {
-        if (P->current.type == M_ASSING)
-        {
-            //Expr* left = parser_expression(P->previous);
-            //return parser_assing(P, left);
-        }
-        else if (P->current.type >= M_PLUS_ASSING && P->current.type <= M_MOD_ASSING)
-        {
-
-        }
-        else
-        {
-            // error
-        }
-    }
-    else
-    {
-        // error
-    }
-}
+//static Stmt* parser_ChooseCompoundOrAssing(Parser* P)
+//{
+//    if (P->previous.type == M_V_IDENTIFIER)
+//    {
+//        if (P->current.type == M_ASSING)
+//        {
+//            //Expr* left = parser_expression(P->previous);
+//            //return parser_assing(P, left);
+//        }
+//        else if (P->current.type >= M_PLUS_ASSING && P->current.type <= M_MOD_ASSING)
+//        {
+//
+//        }
+//        else
+//        {
+//            // error
+//        }
+//    }
+//    else
+//    {
+//        // error
+//    }
+//}
 
 static Stmt* parser_assign(Parser* P, Expr* left)
 {
     if (!isLValue(left))
-        printf("Aqui debe ir un mejor error\n");
+        syntaxError("Expected a variable name on assign statement", P->name, left->base.location);
 
     Expr* tempNames[8];
     tempNames[0] = left;
@@ -577,12 +602,13 @@ static Stmt* parser_assign(Parser* P, Expr* left)
     {
         if (namesCount > 8)
         {
-            printf("Mejor error para decir que más de 8 nombres\n");
+            syntaxError("Too many variables (max 8)", P->name, locationCPos(tempNames[0]->base.location.begin, tempNames[namesCount]->base.location.end));
+            break;
         }
 
         Expr* name = parser_expression(P);
         if (!isLValue(name))
-            printf("Aqui debe ir un mejor error 2\n");
+            syntaxError("Expected a variable name on assign statement", P->name, name->base.location);
         tempNames[namesCount++] = name;
     }
 
@@ -598,7 +624,8 @@ static Stmt* parser_assign(Parser* P, Expr* left)
         {
             if (valuesCount > 8)
             {
-                printf("Mejor error para decir que más de 8 valores\n");
+                syntaxError("Too many values (max 8)", P->name, locationCPos(tempValues[0]->base.location.begin, tempValues[valuesCount - 1]->base.location.end));
+                break;
             }
             tempValues[valuesCount++] = parser_expression(P);
         }
@@ -627,6 +654,9 @@ static Stmt* parser_assign(Parser* P, Expr* left)
 
 static Stmt* parser_compound_assing(Parser* P, Expr* left)
 {
+    if (!isLValue(left))
+        syntaxError("Expected a variable name on assign statement", P->name, left->base.location);
+
     Position begin = P->previous.location.begin;
     Token op = P->current;
     advance(P);
@@ -731,7 +761,11 @@ static Stmt* parser_expr_or_assignment_stmt(Parser* P)
     match(P, M_SEMICOLON);
 
     if (!(first->expr_type == EXPR_PREFIX || first->expr_type == EXPR_POSTFIX))
-        printf("algún error por aquí\n");
+    {
+
+        //printf("algún error por aquí\n");
+        return parser_stmt_error(P, first);
+    }
 
     StmtExpr* stmt = arena_allocator(P->arena, sizeof(StmtExpr));
     stmt->stmt.base.ttype = NODE_STMT;
@@ -740,6 +774,19 @@ static Stmt* parser_expr_or_assignment_stmt(Parser* P)
     stmt->expr = first;
 
     return (Stmt*) stmt;
+}
+
+static Stmt* parser_stmt_error(Parser* P, Expr* expr)
+{
+    StmtError* error = arena_allocator(P->arena, sizeof(StmtError));
+
+    error->stmt.base.ttype = NODE_STMT;
+    error->stmt.base.location = expr->base.location;
+    error->stmt.stmt_type = STMT_ERROR;
+    error->nodo = (Node*) expr;
+    error->message = "Expected a variable assignment, but got '%.*s'";
+
+    return (Stmt*) error;
 }
 
 static Stmt* parser_program(Parser* P)
@@ -921,6 +968,20 @@ static void print_expr(Parser* P, Expr* e, const char* prefix, bool isLast)
             print_expr(P, postfix->target, newPrefix, true);
             break;
         }
+
+        case EXPR_ERROR:
+        {
+            ErrorExpr* error = (ErrorExpr*) e;
+            printf("Expression Error\n");
+
+            char targetPrefix[256];
+            build_prefix(targetPrefix, prefix, isLast);
+            print_branch(targetPrefix, false);
+            printf("Message: '%s'\n", error->message);
+            print_branch(targetPrefix, true);
+            printf("line: %d, column: %d, offset: %d\n", error->expr.base.location.begin.line, error->expr.base.location.begin.column, error->expr.base.location.begin.offset);
+            break;
+        }
     }
 }
 
@@ -1076,6 +1137,18 @@ static void print_stmt(Parser* P, Stmt* stmt, const char* prefix, bool isLast)
             char exprVPrefix[256];
             build_prefix(exprVPrefix, valuePrefix, true);
             print_expr(P, compoundassing->value, exprVPrefix, true);
+            break;
+        }
+
+        case STMT_ERROR:
+        {
+            StmtError* error = (StmtError*) stmt;
+            printf("Statement Error\n");
+
+            char targetPrefix[256];
+            build_prefix(targetPrefix, prefix, isLast);
+            print_branch(targetPrefix, true);
+            printf("Message: '%s'\n", error->message);
             break;
         }
 

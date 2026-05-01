@@ -3,7 +3,9 @@
 #include "m.h"
 
 #include <malloc.h>
+#include <stdlib.h>
 #include <string.h>
+#include <locale.h>
 
 static char* getLexeme(Compiler* C, Token t)
 {
@@ -86,6 +88,7 @@ static Value token_to_value(Compiler* C, Token t)
         }
         case M_V_FLOAT:
         {
+            setlocale(LC_NUMERIC, "C");
             char buffer[64];
             int length = t.length;
 
@@ -93,7 +96,8 @@ static Value token_to_value(Compiler* C, Token t)
 
             memcpy(buffer, C->src + t.location.begin.offset, length);
             buffer[length] = '\0';
-
+            
+            //printf("===========buffer = '%f'=============\n", atof(buffer));
             return make_float(atof(buffer));
         }
         case M_V_STRING:
@@ -197,6 +201,25 @@ static int symbols_resolve(SymbolTable* T, Token name, const char* src)
     }
 
     return -1; // Error luego
+}
+
+static int ir_emit_jump(IRList* ir, IROpCode op, int a)
+{
+    int pos = ir->count;
+
+    ir_emit(ir, op, a, -1, 0);
+
+    return pos;
+}
+
+static void ir_patch(IRList* ir, int pos, int target)
+{
+    ir->data[pos].b = target;
+}
+
+static int ir_current(IRList* ir)
+{
+    return ir->count;
 }
 
 Compiler* compiler_init(const char* src, const char* name)
@@ -371,6 +394,12 @@ int compiler_expr(Compiler* C, Expr* expr)
             else
                 return old;
         }
+        case EXPR_ERROR:
+        {
+            ErrorExpr* error = (ErrorExpr*) expr;
+
+            compilerError(error->message, C->name, error->token.location, error->token.type == M_V_MALFORMED_NUMBER ? "Malformed Number" : "Malformed String");
+        }
     }
 }
 
@@ -384,6 +413,7 @@ void compiler_stmt(Compiler* C, Stmt* stmt)
 
             for (int i = 0; i < var->namesCount; i++)
             {
+                //printf("line: %d, column: %d, offset: %d\n", var->names[i].location.begin.line, var->names[i].location.begin.column, var->names[i].location.begin.offset);
                 int slot = symbol_define(&C->symbol, var->names[i], C->src);
 
                 int value_reg;
@@ -416,7 +446,25 @@ void compiler_stmt(Compiler* C, Stmt* stmt)
 
         case STMT_IF:
         {
+            StmtIf* ifstmt = (StmtIf*) stmt;
+            int cond = compiler_expr(C, ifstmt->condition);
 
+            int jump_if_false = ir_emit_jump(&C->ir, IR_JUMP_IF_FALSE, cond);
+
+            compiler_stmt(C, ifstmt->ifBranch);
+
+            int jump_end = ir_emit_jump(&C->ir, IR_JUMP, 0);
+
+            int else_pos = ir_current(&C->ir);
+            ir_patch(&C->ir, jump_if_false, else_pos);
+
+            if (ifstmt->elseBranch != NULL)
+            {
+                compiler_stmt(C, ifstmt->elseBranch);
+            }
+
+            int end_pos = ir_current(&C->ir);
+            ir_patch(&C->ir, jump_end, end_pos);
             return;
         }
 
@@ -484,6 +532,13 @@ void compiler_stmt(Compiler* C, Stmt* stmt)
 
             return;
         }
+
+        case STMT_ERROR:
+        {
+            StmtError* error = (StmtError*) stmt;
+            
+            compilerError(error->message, C->name, stmt->base.location, (error->nodo->location.end.offset - error->nodo->location.begin.offset), &C->src[error->nodo->location.begin.offset]);
+        }
     }
 }
 
@@ -499,24 +554,20 @@ static void print_ir(Compiler* C, IRInstruction ir)
     if (ir.op == IR_LOAD_CONST)
     {
         Value v = C->constants.data[ir.b];
-        char buffer[32];
-        char* other = NULL;
+        printf("IR_LOADK R%d K%d", ir.a, ir.b);
         if (v.type == VAL_INT)
-            snprintf(buffer, sizeof(buffer), "%d", v.i);
+            printf(" [%d]", v.i);
         else if (v.type == VAL_FLOAT)
-            snprintf(buffer, sizeof(buffer), "%.5lf", v.i);
+            printf(" [%f]", v.f);
         else if (v.type == VAL_BOOLEAN)
-            other = v.b == 1 ? "true" : "false";
+            printf(" [%s]", v.b == true ? "true" : "false");
         else if (v.type == VAL_NAN)
-            other = "NaN";
+            printf(" [NaN]");
         else if (v.type == VAL_NIL)
-            other = "nil";
+            printf(" [nil]");
         else if (v.type == VAL_STRING)
-            other = v.string.chars;
-        else 
-            snprintf(buffer, sizeof(buffer), "%d", v.i); // temporal
-
-        printf("IR_LOADK R%d K%d [%s]", ir.a, ir.b, other != NULL ? other : buffer);
+            printf(" ['%.*s']", v.string.length, v.string.chars);
+            
     }
     else if (ir.op == IR_LOAD_VAR)
         printf("IR_LOADV R%d S%d", ir.a, ir.b);
@@ -557,9 +608,9 @@ static void print_ir(Compiler* C, IRInstruction ir)
     else if (ir.op == IR_GTE)
         printf("IR_GTE R%d R%d R%d", ir.a, ir.b, ir.c);
     else if (ir.op == IR_JUMP)
-        printf("IR_JUMP Ax %d", ir.a);
+        printf("IR_JUMP L%d", ir.b);
     else if (ir.op == IR_JUMP_IF_FALSE)
-        printf("IR_JUMP_IF_FALSE A%d Bx%d", ir.a, ir.b);
+        printf("IR_JUMP_IF_FALSE R%d L%d", ir.a, ir.b);
     else
         printf("Invalid op '%d'", ir.op);
     printf("\n");

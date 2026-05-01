@@ -31,7 +31,8 @@ typedef enum
     EXPR_LITERAL,
     EXPR_NAME,
     EXPR_PREFIX,
-    EXPR_POSTFIX
+    EXPR_POSTFIX,
+    EXPR_ERROR,
 } ExprType;
 
 typedef struct
@@ -41,6 +42,14 @@ typedef struct
 } Expr;
 
 // Diferentes nodos de expresiones
+
+typedef struct
+{
+    Expr expr;
+
+    Token token;
+    const char* message;
+} ErrorExpr;
 
 typedef struct
 {
@@ -92,7 +101,8 @@ typedef enum
     STMT_EXPR,
     STMT_ASSING,
     STMT_BLOCK,
-    STMT_COMPOUND_ASSING
+    STMT_COMPOUND_ASSING,
+    STMT_ERROR,
 } StmtType;
 
 typedef struct
@@ -102,6 +112,14 @@ typedef struct
 } Stmt;
 
 // Diferentes nodos de sentencias
+
+typedef struct
+{
+    Stmt stmt;
+
+    Node* nodo;
+    const char* message;
+} StmtError;
 
 typedef struct
 {

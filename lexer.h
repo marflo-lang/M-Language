@@ -33,6 +33,7 @@ typedef enum
     // Literales
     M_V_INT,
     M_V_FLOAT,
+    M_V_MALFORMED_NUMBER,
     M_V_STRING,
     M_V_UNFINISHED_STRING,
     M_V_IDENTIFIER,

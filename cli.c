@@ -232,13 +232,13 @@ int main(void)
         //printf("Ok.\n");
         //printf("Typechecker level: %d\n", config.typechecker_level);
         //printf("Optimizer lever: %d\n", config.optimizer_level);
-        printf("Script: %s\n", config.script_path);
         Source* s = read_file(config.script_path);
 
-#if defined(DEBUG) && DEBUG == 1
+#if (defined(DEBUG) && DEBUG == 1) && (defined(CLI_DEBUG) && CLI_DEBUG == 1)
         // Debug CLI
-            printf("src %s\n", s->src);
-            printf("length %zd\n", s->length);
+        printf("Script: %s\n", config.script_path);
+        printf("src %s\n", s->src);
+        printf("length %zd\n", s->length);
 #endif
         /*for (int i = 0; i <= s->length; i++)
         {
@@ -267,7 +267,6 @@ int main(void)
         ========== Parser ==========
         */
         //-*
-        printf("%d, %d, %d \n", Tokens->data[0].type, Tokens->data[1].type, Tokens->data[2].type);
         Parser* P = parser_init(Tokens, &A, config.script_path, s->src);
         Stmt* stmt = parser_execute(P);
 
@@ -288,17 +287,22 @@ int main(void)
         //compilerError("Esto es una prueba %s, probando %d, bye %c", "test", locationCNum(1, 2, 3, 4, 5, 6), "prueba123456", 58, 'M');
         //compilerError("Variable '%.*s' has not yet been declared. Consider declaring it before using it", "test2", locationCNum(1, 2, 3, 4, 5, 6), 5, &s->src[2]);
         //*/
-        free(Tokens);
-        free(L);
-        free(s);
-        //print("");
-        print("esto es una prueba del print");
-        print(5);
-        print(true);
-        print(6.397);
-        print('a');
-        print("prueba de", "cadena multiple", 5, "concatenacion");
+        
+        //free(Tokens);
+        //free(L);
+        //free(stmt);
+        //free(P);
+        //free(s);
+        //free(C);
         printf("M Languaje\n");
+
+        //print("");
+        //print("esto es una prueba del print");
+        //print(5);
+        //print(true);
+        //print(6.397);
+        //print('a');
+        //print("prueba de", "cadena multiple", 5, "concatenacion");
     }
 
     return 0;
