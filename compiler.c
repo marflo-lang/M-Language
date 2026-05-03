@@ -12,6 +12,56 @@ static char* getLexeme(Compiler* C, Token t)
     //return strndup();
 }
 
+static bool value_equals(Value a, Value b)
+{
+    if (a.type != b.type) return false;
+
+    switch (a.type)
+    {
+        case VAL_INT:
+        {
+            return a.i == b.i;
+        }
+
+        case VAL_FLOAT:
+        {
+            return a.f == b.f;
+        }
+
+        case VAL_BOOLEAN:
+        {
+            return a.b == b.b;
+        }
+
+        case VAL_STRING:
+        {
+            return a.string.length == b.string.length && (strncmp(a.string.chars, b.string.chars, a.string.length) == 0);
+        }
+
+        case VAL_NIL:
+        {
+            return true;
+        }
+
+        case VAL_NAN:
+        {
+            return true;
+        }
+
+    }
+}
+
+static int const_find(ConstTable* T, Value v)
+{
+    for (int i = 0; i < T->count; i++)
+    {
+        if (value_equals(T->data[i], v))
+            return i;
+    }
+
+    return -1;
+}
+
 static bool compare_tokens(Token a, Token b, const char* src)
 {
     if (a.length != b.length) return false;
@@ -122,26 +172,33 @@ static Value token_to_value(Compiler* C, Token t)
     }
 }
 
-static void ir_emit(IRList* list, IROpCode op, int a, int b, int c)
+static void ir_emit(IRList* list, IROpCode op, int a, int b, int c, Location loc)
 {
     if (list->count >= list->capacity)
     {
         list->capacity = list->capacity < 8 ? 8 : list->capacity * 2;
         IRInstruction* newData = realloc(list->data, sizeof(IRInstruction) * list->capacity);
-        if (newData == NULL)
+        Location* newLocations = realloc(list->locations, sizeof(Location) * list->capacity);
+        if (newData == NULL || newLocations == NULL)
         {
             memoryCrash("Time to Compile");
             exit(1);
         }
         list->data = newData;
+        list->locations = newLocations;
     }
 
     IRInstruction instr = { op, a, b, c };
-    list->data[list->count++] = instr;
+    list->data[list->count] = instr;
+    list->locations[list->count] = loc;
+    list->count++;
 }
 
 static int const_add(ConstTable* T, Value v)
 {
+    int existing = const_find(T, v);
+    if (existing != -1) return existing;
+
     if (T->count >= T->capacity)
     {
         T->capacity = T->capacity < 8 ? 8 : T->capacity * 2;
@@ -203,11 +260,11 @@ static int symbols_resolve(SymbolTable* T, Token name, const char* src)
     return -1; // Error luego
 }
 
-static int ir_emit_jump(IRList* ir, IROpCode op, int a)
+static int ir_emit_jump(IRList* ir, IROpCode op, int a, Location loc)
 {
     int pos = ir->count;
 
-    ir_emit(ir, op, a, -1, 0);
+    ir_emit(ir, op, a, -1, 0, loc);
 
     return pos;
 }
@@ -235,7 +292,7 @@ Compiler* compiler_init(const char* src, const char* name)
     ir_init(&C->ir);
     symbols_init(&C->symbol);
     constants_init(&C->constants);
-    locations_init(&C->locations);
+    //locations_init(&C->locations);
     C->src = src;
     C->name = name;
     C->next_reg = 0;
@@ -247,6 +304,7 @@ Compiler* compiler_init(const char* src, const char* name)
 void ir_init(IRList* list)
 {
     list->data = NULL;
+    list->locations = NULL;
     list->count = 0;
     list->capacity = 0;
 }
@@ -285,7 +343,7 @@ int compiler_expr(Compiler* C, Expr* expr)
 
             int k = const_add(&C->constants, v);
 
-            ir_emit(&C->ir, IR_LOAD_CONST, r, k, 0);
+            ir_emit(&C->ir, IR_LOAD_CONST, r, k, 0, literal->expr.base.location);
             return r;
         }
         case EXPR_NAME:
@@ -298,7 +356,7 @@ int compiler_expr(Compiler* C, Expr* expr)
                 compilerError("Variable '%.*s' has not yet been declared. Consider declaring it before using it", C->name, nameE->expr.base.location, nameE->name.length, &C->src[nameE->name.location.begin.offset]);
 
             int r = alloc_reg(C);
-            ir_emit(&C->ir, IR_LOAD_VAR, r, slot, 0);
+            ir_emit(&C->ir, IR_LOAD_VAR, r, slot, 0, nameE->expr.base.location);
             return r;
         }
         case EXPR_BINARY:
@@ -322,10 +380,16 @@ int compiler_expr(Compiler* C, Expr* expr)
                 case M_CONCAT: op = IR_CONCAT; break;
                 case M_MOD: op = IR_MOD; break;
                 case M_POW: op = IR_POW; break;
+                case M_LT: op = IR_LT; break;
+                case M_LTE: op = IR_LTE; break;
+                case M_GT: op = IR_GT; break;
+                case M_GTE: op = IR_GTE; break;
+                case M_EQ: op = IR_EQ; break;
+                case M_NEQ: op = IR_NEQ; break;
                 default: op = IR_ADD; break; // temporal
             }
 
-            ir_emit(&C->ir, op, r, left, right);
+            ir_emit(&C->ir, op, r, left, right, binary->expr.base.location);
             return r;
         }
         case EXPR_UNARY:
@@ -344,7 +408,7 @@ int compiler_expr(Compiler* C, Expr* expr)
                 default: op = IR_UNM; break; // temporal
             }
 
-            ir_emit(&C->ir, op, r, right, 0);
+            ir_emit(&C->ir, op, r, right, 0, unary->expr.base.location);
             return r;
         }
         case EXPR_POSTFIX:
@@ -369,25 +433,25 @@ int compiler_expr(Compiler* C, Expr* expr)
                 compilerError("Variable '%.*s' has not yet been declared. Consider declaring it before using it", C->name, name->expr.base.location, name->name.length, &C->src[name->name.location.begin.offset]);
 
             int old = alloc_reg(C);
-            ir_emit(&C->ir, IR_LOAD_VAR, old, slot, 0);
+            ir_emit(&C->ir, IR_LOAD_VAR, old, slot, 0, fix->target->base.location);
 
             int one = alloc_reg(C);
             Value v = make_int(atoi("1"));
             int k = const_add(&C->constants, v);
-            ir_emit(&C->ir, IR_LOAD_CONST, one, k, 0); // Pendiente revisar comportamiento
+            ir_emit(&C->ir, IR_LOAD_CONST, one, k, 0, fix->op.location); // Pendiente revisar comportamiento
 
             int result = alloc_reg(C);
 
             if (fix->op.type == M_INC)
             {
-                ir_emit(&C->ir, IR_ADD, result, old, one);
+                ir_emit(&C->ir, IR_ADD, result, old, one, fix->expr.base.location);
             }
             else
             {
-                ir_emit(&C->ir, IR_SUB, result, old, one);
+                ir_emit(&C->ir, IR_SUB, result, old, one, fix->expr.base.location);
             }
 
-            ir_emit(&C->ir, IR_STORE_VAR, slot, result, 0);
+            ir_emit(&C->ir, IR_STORE_VAR, slot, result, 0, fix->expr.base.location);
 
             if (fix->isPre)
                 return result;
@@ -425,10 +489,10 @@ void compiler_stmt(Compiler* C, Stmt* stmt)
                 else
                 {
                     value_reg = alloc_reg(C);
-                    ir_emit(&C->ir, IR_LOAD_CONST, value_reg, 0, 0); // NaN, pendiente mejorar
+                    ir_emit(&C->ir, IR_LOAD_CONST, value_reg, 0, 0, var->values[var->valuesCount - 1]->base.location); // NaN, pendiente mejorar
                 }
 
-                ir_emit(&C->ir, IR_STORE_VAR, slot, value_reg, 0);
+                ir_emit(&C->ir, IR_STORE_VAR, slot, value_reg, 0, var->stmt.base.location);
             }
 
             return;
@@ -449,11 +513,14 @@ void compiler_stmt(Compiler* C, Stmt* stmt)
             StmtIf* ifstmt = (StmtIf*) stmt;
             int cond = compiler_expr(C, ifstmt->condition);
 
-            int jump_if_false = ir_emit_jump(&C->ir, IR_JUMP_IF_FALSE, cond);
+            int jump_if_false = ir_emit_jump(&C->ir, IR_JUMP_IF_FALSE, cond, ifstmt->condition->base.location);
 
             compiler_stmt(C, ifstmt->ifBranch);
 
-            int jump_end = ir_emit_jump(&C->ir, IR_JUMP, 0);
+            int jump_end = 0;
+
+            if (ifstmt->elseBranch != NULL)
+                jump_end = ir_emit_jump(&C->ir, IR_JUMP, 0, locationCPos(ifstmt->ifBranch->base.location.end, ifstmt->ifBranch->base.location.end));
 
             int else_pos = ir_current(&C->ir);
             ir_patch(&C->ir, jump_if_false, else_pos);
@@ -464,7 +531,8 @@ void compiler_stmt(Compiler* C, Stmt* stmt)
             }
 
             int end_pos = ir_current(&C->ir);
-            ir_patch(&C->ir, jump_end, end_pos);
+            if (ifstmt->elseBranch != NULL)
+                ir_patch(&C->ir, jump_end, end_pos);
             return;
         }
 
@@ -493,10 +561,10 @@ void compiler_stmt(Compiler* C, Stmt* stmt)
                 else
                 {
                     value_reg = alloc_reg(C);
-                    ir_emit(&C->ir, IR_LOAD_CONST, value_reg, 0, 0); // NaN, pendiente mejorar
+                    ir_emit(&C->ir, IR_LOAD_CONST, value_reg, 0, 0, assign->values[assign->valueCount - 1]->base.location); // NaN, pendiente mejorar
                 }
 
-                ir_emit(&C->ir, IR_STORE_VAR, slot, value_reg, 0);
+                ir_emit(&C->ir, IR_STORE_VAR, slot, value_reg, 0, assign->stmt.base.location);
             }
             return;
         }
@@ -527,8 +595,8 @@ void compiler_stmt(Compiler* C, Stmt* stmt)
             default: op = IR_ADD; break; // temporal
             }
             //ir_emit(&C->ir, IR_LOAD_VAR, r1, target, 0);
-            ir_emit(&C->ir, op, r, target, value);
-            ir_emit(&C->ir, IR_STORE_VAR, slot, r, 0);
+            ir_emit(&C->ir, op, r, target, value, compound->value->base.location);
+            ir_emit(&C->ir, IR_STORE_VAR, slot, r, 0, compound->stmt.base.location);
 
             return;
         }
@@ -549,8 +617,11 @@ void compiler_program(Compiler* C, Stmt* stmt)
 
 #if (defined(DEBUG) && DEBUG == 1) && (defined(COMPILER_DEBUG) && COMPILER_DEBUG == 1)
 
-static void print_ir(Compiler* C, IRInstruction ir)
+static void print_ir(Compiler* C, int i)
 {
+    IRInstruction ir = C->ir.data[i];
+    printf("L%d - ", i);
+    printf("%d: ", C->ir.locations[i].begin.line);
     if (ir.op == IR_LOAD_CONST)
     {
         Value v = C->constants.data[ir.b];
@@ -623,7 +694,7 @@ void compiler_print(Compiler* C)
     printf("----- IR Instructions -----\n");
     for (int i = 0; i < C->ir.count; i++)
     {
-        print_ir(C, C->ir.data[i]);
+        print_ir(C, i);
     }
     printf("===== END COMPILER DEBUG =====\n");
 

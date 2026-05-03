@@ -51,7 +51,7 @@ typedef struct
 typedef struct
 {
     IRInstruction* data;
-
+    Location* locations;
     int count;
     int capacity;
 } IRList;
@@ -64,11 +64,11 @@ typedef enum
     VAL_FLOAT,
     VAL_STRING,
     VAL_BOOLEAN
-} ValueType;
+} CValueType;
 
 typedef struct
 {
-    ValueType type;
+    CValueType type;
 
     union
     {
@@ -113,7 +113,7 @@ typedef struct
 
     SymbolTable symbol;
     ConstTable constants;
-    LocationInstructions locations;
+    //LocationInstructions locations;
     int next_reg;
     int next_const;
 } Compiler;

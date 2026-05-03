@@ -1,6 +1,9 @@
-#include <malloc.h>
 #include "allocator.h"
 #include "err.h"
+
+#include <malloc.h>
+#include <assert.h>
+
 
 void arena_init(Arena* A, size_t size)
 {
@@ -12,7 +15,7 @@ void arena_init(Arena* A, size_t size)
 void* arena_allocator(Arena* A, size_t size)
 {
     size = (size + 7) & ~7; // alineación a 8 bytes
-    if (A->offset + size > A->capacity)
+    if (A->offset + size >= A->capacity)
     {
         size_t newCapacity = A->capacity * 2;
 
@@ -29,6 +32,8 @@ void* arena_allocator(Arena* A, size_t size)
         A->memory = newMemory;
         A->capacity = newCapacity;
     }
+
+    assert(A->offset + size < A->capacity);
 
     void* ptr = A->memory + A->offset;
     A->offset += size;

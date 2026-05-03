@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <ctype.h>
 #include <stdbool.h>
+#include <time.h>
 #include <locale.h>
 #include "err.h"
 #include "cli.h"
@@ -223,7 +224,7 @@ int main(void)
 
 
     Config config;
-
+    clock_t startAllProgram = clock();
     if (parse_input(input, &config))
     {
         /*
@@ -248,6 +249,7 @@ int main(void)
         /*
         ========== Lexer ==========
         */
+        clock_t startCompile = clock();
 
         Lexer* L = Lexer_init(s->src, config.script_path);
         TokenArray* Tokens = Lexer_execute(L);
@@ -284,6 +286,8 @@ int main(void)
         compiler_print(C);
 #endif 
 
+        clock_t endCompile = clock();
+        printf("The time it took to compile the program is %f seconds\n", (double)(endCompile - startCompile) / CLOCKS_PER_SEC);
         //compilerError("Esto es una prueba %s, probando %d, bye %c", "test", locationCNum(1, 2, 3, 4, 5, 6), "prueba123456", 58, 'M');
         //compilerError("Variable '%.*s' has not yet been declared. Consider declaring it before using it", "test2", locationCNum(1, 2, 3, 4, 5, 6), 5, &s->src[2]);
         //*/
@@ -304,6 +308,10 @@ int main(void)
         //print('a');
         //print("prueba de", "cadena multiple", 5, "concatenacion");
     }
+
+    clock_t endAllProgram = clock();
+
+    printf("The time it took to run the entire program is %f seconds\n", (double)(endAllProgram - startAllProgram) / CLOCKS_PER_SEC);
 
     return 0;
 }

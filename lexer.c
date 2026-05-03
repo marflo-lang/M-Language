@@ -3,11 +3,18 @@
 #include <malloc.h>
 #include <stdlib.h>
 #include <string.h>
+#include <assert.h>
 #include "lexer.h"
 #include "err.h"
 
 static void consume(Lexer* L)
 {
+    if (L->position >= L->length)
+    {
+        L->current == '\0';
+        return;
+    }
+    assert(L->position < L->length);
     L->lastPosition = pos(L->line, L->column, L->position);
     L->position++;
     L->column++;
@@ -24,6 +31,12 @@ static void consume(Lexer* L)
 
 static void consumeNoLine(Lexer* L)
 {
+    if (L->position >= L->length)
+    {
+        L->current == '\0';
+        return;
+    }
+    assert(L->position < L->length);
     L->lastPosition = pos(L->line, L->column, L->position);
     L->position++;
     L->column++;
@@ -35,12 +48,14 @@ static void consumeNoLine(Lexer* L)
 static char* peek(Lexer* L)
 {
     if (L->position + 1 >= L->length) return '\0';
+    assert(L->position + 1 < L->length);
     return L->src[L->position + 1];
 }
 
 static char* nextPeek(Lexer* L)
 {
     if (L->position + 2 >= L->length) return '\0';
+    assert(L->position + 2 < L->length);
     return L->src[L->position + 2];
 }
 
@@ -75,12 +90,17 @@ static void skipWhiteSpace(Lexer* L)
 static void skipShortComments(Lexer* L)
 {
     //printf("entró\n");
-    while (L->current != '\n')
+    while (L->current != '\n' && L->current != '\0')
     {
         consumeNoLine(L);
         //printf("'%c'\n", L->current);
     }
-    consume(L); // \n
+    if (L->current == '\n')
+    {
+        L->line++;
+        L->column = 0;
+    }
+    consume(L); // \n o \0
 }
 
 static void skipLongComment(Lexer* L)
@@ -590,7 +610,7 @@ static void pushToken(TokenArray* Tokens, Token t)
 {
     //printf("Empieza\n");
     //printf("count = %d, capacity = %d\n", Tokens->count, Tokens->capacity);
-    if (Tokens->count == Tokens->capacity)
+    if (Tokens->count + 1 >= Tokens->capacity)
     {
         //printf("entra\n");
         int newCapacity = Tokens->capacity < 8 ? 8 : Tokens->capacity * 2;
@@ -604,20 +624,20 @@ static void pushToken(TokenArray* Tokens, Token t)
             //printErr("Error de memoria", "Lexer", 3);
             //exit(1);
         }
-
         Tokens->data = newData;
         Tokens->capacity = newCapacity;
         //printf("sale\n");
     }
-    else if (Tokens->count > Tokens->capacity)
-    {
-        memoryCrash("Lexer");
-        exit(1);
-        //printErr("Memory overflow", "Lexer", 3);
-        //exit(1);
-    }
+    //else if (Tokens->count > Tokens->capacity)
+    //{
+    //    memoryCrash("Lexer");
+    //    exit(1);
+    //    //printErr("Memory overflow", "Lexer", 3);
+    //    //exit(1);
+    //}
 
     //printf("count = %d, capacity = %d\n", Tokens->count, Tokens->capacity);
+    assert(Tokens->count < Tokens->capacity);
     Tokens->data[Tokens->count] = t;
     Tokens->count++;
     //printf("Termina\n");

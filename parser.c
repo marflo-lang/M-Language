@@ -1,6 +1,8 @@
-#include <malloc.h>
 #include "parser.h"
 #include "err.h"
+
+#include <malloc.h>
+#include <assert.h>
 
 // ===============================
 // Forward declarations
@@ -113,17 +115,26 @@ Auxiliary functions
 */
 static void advance(Parser* P)
 {
+    assert(P->pos >= -1);
     P->previous = P->current;
     if (P->pos + 1 >= P->Tokens->count)
-        P->current = P->Tokens->data[P->Tokens->count];
+    {
+        assert(P->Tokens->data[P->Tokens->count - 1].type == M_EOF);
+        P->current = P->Tokens->data[P->Tokens->count - 1];
+    }
     else
+    {
+        assert(P->pos + 1 < P->Tokens->count);
         P->current = P->Tokens->data[++P->pos];
+    }
 }
 
 static Token peek(Parser* P)
 {
+    assert(P->pos >= 0);
     if (P->pos + 1 >= P->Tokens->count)
-        return P->Tokens->data[P->Tokens->count];
+        return P->Tokens->data[P->Tokens->count - 1];
+    assert(P->pos + 1 < P->Tokens->count);
     return P->Tokens->data[P->pos + 1];
 }
 
@@ -513,7 +524,7 @@ static Stmt* parser_var(Parser* P, bool isConst)
     {
         if (nameCount + 1 >= 8)
         {
-            syntaxError("Too many variables (max 8)", P->name, locationCPos(tempNames[0].location.begin, tempNames[nameCount].location.end));
+            syntaxError("Too many variables (max 8)", P->name, locationCPos(tempNames[0].location.begin, tempNames[nameCount - 1].location.end));
             break;
         }
         tempNames[nameCount++] = P->current;
@@ -602,7 +613,7 @@ static Stmt* parser_assign(Parser* P, Expr* left)
     {
         if (namesCount > 8)
         {
-            syntaxError("Too many variables (max 8)", P->name, locationCPos(tempNames[0]->base.location.begin, tempNames[namesCount]->base.location.end));
+            syntaxError("Too many variables (max 8)", P->name, locationCPos(tempNames[0]->base.location.begin, tempNames[namesCount-1]->base.location.end));
             break;
         }
 
@@ -695,7 +706,19 @@ static Stmt* parser_if(Parser* P)
 
     StmtIf* stmt = arena_allocator(P->arena, sizeof(StmtIf));
     
-    Position end = {0, 0, 0};///*elseBranch != NULL ? elseBranch->base.location.end : */ ifBranch->base.location.end;
+    //Position end = {0, 0, 0};///*elseBranch != NULL ? elseBranch->base.location.end : */ ifBranch->base.location.end;
+    if (elseBranch != NULL)
+    {
+        assert(elseBranch->base.location.end.line > 0);
+        assert(elseBranch->base.location.end.column > 0);
+        assert(elseBranch->base.location.end.offset > 0);
+    }
+    assert(ifBranch->base.location.end.line > 0);
+    assert(ifBranch->base.location.end.column > 0);
+    assert(ifBranch->base.location.end.offset > 0);
+
+    Position end = elseBranch != NULL ? elseBranch->base.location.end :  ifBranch->base.location.end;
+
     //print("final");
 
     stmt->stmt.base.location = locationCPos(begin, end);
@@ -722,6 +745,7 @@ static Stmt* parser_block(Parser* P)
             exit(1);
         }
 
+        assert(count < 64);
         temp[count++] = parser_statement(P);
     }
 
@@ -800,6 +824,8 @@ static Stmt* parser_program(Parser* P)
             printErr("Demasiados Statements en el script principal", P->name, 3);
             exit(1);
         }
+
+        assert(stmtCount < 1024);
         Stmt* stmt = parser_statement(P);
         tempStmts[stmtCount++] = stmt;
 
