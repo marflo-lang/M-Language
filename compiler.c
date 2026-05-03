@@ -12,6 +12,19 @@ static char* getLexeme(Compiler* C, Token t)
     //return strndup();
 }
 
+static void begin_scope(SymbolTable* T)
+{
+    T->scope_depth++;
+}
+
+static void end_scope(SymbolTable* T)
+{
+    T->scope_depth--;
+
+    while (T->count > 0 && T->data[T->count - 1].scope_depth > T->scope_depth)
+        T->count--;
+}
+
 static bool value_equals(Value a, Value b)
 {
     if (a.type != b.type) return false;
@@ -221,43 +234,45 @@ static int alloc_reg(Compiler* C)
     return C->next_reg++;
 }
 
-static int symbol_define(SymbolTable* T, Token name, const char* src)
+static int symbol_define(SymbolTable* T, Token name, bool isConst, const char* src)
 {
-    for (int i = 0; i < T->count; i++)
-    {
-        if (compare_tokens(T->names[i], name, src))
-            return i;
-    }
+    int slot = T->count;
+
+    //for (int i = 0; i < T->count; i++)
+    //{
+    //    if (compare_tokens(T->names[i], name, src))
+    //        return i;
+    //}
 
     if (T->count >= T->capacity)
     {
         T->capacity = T->capacity < 8 ? 8 : T->capacity * 2;
-        const char** newNames = realloc(T->names, sizeof(char*) * T->capacity);
+        const char** newData = realloc(T->data, sizeof(char*) * T->capacity);
 
-        if (newNames == NULL)
+        if (newData == NULL)
         {
             memoryCrash("Time to Compile");
             exit(1);
         }
 
-        T->names = newNames;
+        T->data = newData;
     }
 
-    T->names[T->count] = name;
-    return T->count++;
+    T->data[T->count++] = (Symbol) {.name = name, .slot = slot, .scope_depth = T->scope_depth, .isConst = isConst};
+    return slot;
 }
 
-static int symbols_resolve(SymbolTable* T, Token name, const char* src)
+static Symbol* symbols_resolve(SymbolTable* T, Token name, const char* src)
 {
     for (int i = 0; i < T->count; i++)
     {
-        if (compare_tokens(T->names[i], name, src))
+        if (compare_tokens(T->data[i].name, name, src))
         {
-            return i;
+            return &T->data[i];
         }
     }
 
-    return -1; // Error luego
+    return NULL; // Error luego
 }
 
 static int ir_emit_jump(IRList* ir, IROpCode op, int a, Location loc)
@@ -311,7 +326,7 @@ void ir_init(IRList* list)
 
 void symbols_init(SymbolTable* T)
 {
-    T->names = NULL;
+    T->data = NULL;
     T->count = 0;
     T->capacity = 0;
 }
@@ -350,10 +365,12 @@ int compiler_expr(Compiler* C, Expr* expr)
         {
             NameExpr* nameE = (NameExpr*) expr;
             // Pendiente por revisar el name
-            int slot = symbols_resolve(&C->symbol, nameE->name, C->src);
+            Symbol* symbol  = symbols_resolve(&C->symbol, nameE->name, C->src);
 
-            if (slot == -1)
+            if (symbol == NULL)
                 compilerError("Variable '%.*s' has not yet been declared. Consider declaring it before using it", C->name, nameE->expr.base.location, nameE->name.length, &C->src[nameE->name.location.begin.offset]);
+
+            int slot = symbol->slot;
 
             int r = alloc_reg(C);
             ir_emit(&C->ir, IR_LOAD_VAR, r, slot, 0, nameE->expr.base.location);
@@ -427,10 +444,15 @@ int compiler_expr(Compiler* C, Expr* expr)
             }
 
             NameExpr* name = (NameExpr*) fix->target;
-            int slot = symbols_resolve(&C->symbol, name->name, C->src);
+            Symbol* symbol = symbols_resolve(&C->symbol, name->name, C->src);
 
-            if (slot == -1)
+            if (symbol == NULL)
                 compilerError("Variable '%.*s' has not yet been declared. Consider declaring it before using it", C->name, name->expr.base.location, name->name.length, &C->src[name->name.location.begin.offset]);
+
+            if (symbol->isConst)
+                compilerError("Const '%.*s' cannot be modified", C->name, fix->expr.base.location, name->name.length, &C->src[name->name.location.begin.offset]);
+
+            int slot = symbol->slot;
 
             int old = alloc_reg(C);
             ir_emit(&C->ir, IR_LOAD_VAR, old, slot, 0, fix->target->base.location);
@@ -475,10 +497,13 @@ void compiler_stmt(Compiler* C, Stmt* stmt)
         {
             StmtVar* var = (StmtVar*) stmt;
 
+            if (var->isConst && var->valuesCount < var->namesCount)
+                compilerError("All const assign must have a value, got '%d' names and '%d' values", C->name, var->stmt.base.location, var->namesCount, var->valuesCount);
+
             for (int i = 0; i < var->namesCount; i++)
             {
                 //printf("line: %d, column: %d, offset: %d\n", var->names[i].location.begin.line, var->names[i].location.begin.column, var->names[i].location.begin.offset);
-                int slot = symbol_define(&C->symbol, var->names[i], C->src);
+                int slot = symbol_define(&C->symbol, var->names[i], var->isConst, C->src);
 
                 int value_reg;
 
@@ -501,10 +526,12 @@ void compiler_stmt(Compiler* C, Stmt* stmt)
         case STMT_BLOCK:
         {
             StmtBlock* block = (StmtBlock*) stmt;
-            
+            begin_scope(&C->symbol);
+
             for (int i = 0; i < block->count; i++)
                 compiler_stmt(C, block->statements[i]);
 
+            end_scope(&C->symbol);
             return;
         }
 
@@ -547,10 +574,15 @@ void compiler_stmt(Compiler* C, Stmt* stmt)
             StmtAssign* assign = (StmtAssign*) stmt;
             for (int i = 0; i < assign->nameCount; i++)
             {
-                int slot = symbols_resolve(&C->symbol, assign->names[i], C->src);
+                Symbol* symbol = symbols_resolve(&C->symbol, assign->names[i], C->src);
 
-                if (slot == -1)
+                if (symbol == NULL)
                     compilerError("Variable '%.*s' has not yet been declared. Consider declaring it before using it", C->name, assign->names[i].location, assign->names[i].length, &C->src[assign->names[i].location.begin.offset]);
+
+                if (symbol->isConst)
+                    compilerError("Const '%.*s' cannot be modified", C->name, assign->stmt.base.location, assign->names[i].length, &C->src[assign->names[i].location.begin.offset]);
+
+                int slot = symbol->slot;
 
                 int value_reg;
 
@@ -576,7 +608,15 @@ void compiler_stmt(Compiler* C, Stmt* stmt)
             int value = compiler_expr(C, compound->value);
             int target = compiler_expr(C, compound->target);
 
-            int slot = symbols_resolve(&C->symbol, ((NameExpr*)compound->target)->name, C->src);
+            Symbol* symbol = symbols_resolve(&C->symbol, ((NameExpr*)compound->target)->name, C->src);
+
+            if (symbol == NULL)
+                compilerError("Variable '%.*s' has not yet been declared. Consider declaring it before using it", C->name, compound->target->base.location, ((NameExpr*)compound->target)->name.length, &C->src[compound->target->base.location.begin.offset]);
+
+            if (symbol->isConst)
+                compilerError("Const '%.*s' cannot be modified", C->name, compound->stmt.base.location, ((NameExpr*)compound->target)->name.length, &C->src[compound->target->base.location.begin.offset]);
+
+            int slot = symbol->slot;
 
             int r = alloc_reg(C);
 

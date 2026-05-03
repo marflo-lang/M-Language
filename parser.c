@@ -600,27 +600,31 @@ static Stmt* parser_var(Parser* P, bool isConst)
 //    }
 //}
 
+/*
+TODO: Revisar la multi asignación, se comporta extraño, principalmente cuando son varios names
+*/
+
 static Stmt* parser_assign(Parser* P, Expr* left)
 {
     if (!isLValue(left))
         syntaxError("Expected a variable name on assign statement", P->name, left->base.location);
 
-    Expr* tempNames[8];
-    tempNames[0] = left;
+    Token tempNames[8];
+    tempNames[0] = ((NameExpr*)left)->name;
     int namesCount = 1;
 
     while (match(P, M_COMMA))
     {
         if (namesCount > 8)
         {
-            syntaxError("Too many variables (max 8)", P->name, locationCPos(tempNames[0]->base.location.begin, tempNames[namesCount-1]->base.location.end));
+            syntaxError("Too many variables (max 8)", P->name, locationCPos(tempNames[0].location.begin, tempNames[namesCount-1].location.end));
             break;
         }
 
         Expr* name = parser_expression(P);
         if (!isLValue(name))
             syntaxError("Expected a variable name on assign statement", P->name, name->base.location);
-        tempNames[namesCount++] = name;
+        tempNames[namesCount++] = ((NameExpr*)name)->name;
     }
 
     Expr* tempValues[8];
@@ -629,7 +633,7 @@ static Stmt* parser_assign(Parser* P, Expr* left)
     if (match(P, M_ASSING))
     {
         Expr* expr = parser_expression(P);
-        tempValues[namesCount++] = expr;
+        tempValues[valuesCount++] = expr;
 
         while (match(P, M_COMMA))
         {
@@ -644,15 +648,17 @@ static Stmt* parser_assign(Parser* P, Expr* left)
     }
 
 
-    Expr** names = arena_allocator(P->arena, sizeof(Expr*) * namesCount);
-    memcpy(names, tempNames, sizeof(Expr*) * namesCount);
+    Token* names = arena_allocator(P->arena, sizeof(Token) * namesCount);
+    memcpy(names, tempNames, sizeof(Token) * namesCount);
 
     Expr** values = arena_allocator(P->arena, sizeof(Expr*) * valuesCount);
     memcpy(values, tempValues, sizeof(Expr*) * valuesCount);
 
     StmtAssign* stmt = arena_allocator(P->arena, sizeof(StmtAssign));
 
-    stmt->stmt.base.location = valuesCount > 0 ? locationCPos(tempNames[0]->base.location.begin, tempValues[valuesCount - 1]->base.location.end) : locationCPos(tempNames[0]->base.location.begin, tempNames[namesCount - 1]->base.location.begin);
+    //printf("===============line %d, cloumn %d\n", locationCPos(names[0].location.begin, values[valuesCount - 1]->base.location.end).begin.line, locationCPos(names[0].location.begin, values[valuesCount - 1]->base.location.end).begin.column);
+
+    stmt->stmt.base.location = valuesCount > 0 ? locationCPos(names[0].location.begin, values[valuesCount - 1]->base.location.end) : locationCPos(names[0].location.begin, names[namesCount - 1].location.end);
     stmt->stmt.base.ttype = NODE_STMT;
     stmt->stmt.stmt_type = STMT_ASSING;
     stmt->names = names;
@@ -1104,22 +1110,37 @@ static void print_stmt(Parser* P, Stmt* stmt, const char* prefix, bool isLast)
         {
             StmtAssign* assign = (StmtAssign*) stmt;
             printf("Assign\n");
-
+            //printf("line: %d, column: %d, offset: %d, length: %d, () length: %d\n", assign->names[0].location.begin.line, assign->names[0].location.begin.column, assign->names[0].location.begin.offset, assign->names[0].length, ((NameExpr**)assign->names)[0]->name.length);
+            //printf("line: %d, column: %d, offset: %d\n", assign->stmt.base.location.begin.line, assign->stmt.base.location.begin.column, assign->stmt.base.location.begin.offset);
+            //printf("name: '.*s'\n", assign->names[0].length, &P->src[assign->names[0].location.begin.offset]);
+            //printf("type: %d\n", assign->names[0].type);
+            //printf("Token ", assign->names[0].)
             //print_indent(indent + 1);
+            char targetPrefix[256];
+            build_prefix(targetPrefix, prefix, isLast);
+            print_branch(targetPrefix, false);
             printf("Targets:\n");
             for (int i = 0; i < assign->nameCount; i++)
             {
                 //print_indent(indent + 2);
-                printf("aquí hay un error en el AST, para ser más específicos en el assign->names[i].length\n");
-                //printf("%.*s\n", assign->names[i].length, &P->src[assign->names[i].location.begin.offset]);
-                //printf("%d\n", assign->names[i].length);
+                //printf("aquí hay un error en el AST, para ser más específicos en el assign->names[i].length\n");
+                char namePrefix[256];
+                build_prefix(namePrefix, targetPrefix, false);
+                print_branch(namePrefix, i == assign->nameCount - 1);
+                printf("%.*s\n", assign->names[i].length, &P->src[assign->names[i].location.begin.offset]);
             }
 
             //print_indent(indent + 1);
+            print_branch(targetPrefix, true);
             printf("Vales:\n");
             for (int i = 0; i < assign->valueCount; i++)
             {
                 //print_expr(P, assign->values[i], indent + 2);
+                char valuePrefix[256];
+                build_prefix(valuePrefix, targetPrefix, isLast);
+                //print_branch(valuePrefix, i == assign->valueCount - 1);
+                print_expr(P, assign->values[i], valuePrefix, i == assign->valueCount - 1);
+                //printf("%.*s\n", assign->valueCount[i]);
             }
             break;
         }

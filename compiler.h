@@ -86,9 +86,18 @@ typedef struct
 
 typedef struct
 {
-    Token* names;
+    Token name;
+    int slot;
+    int scope_depth;
+    int isConst;
+} Symbol;
+
+typedef struct
+{
+    Symbol* data;
     int count;
     int capacity;
+    int scope_depth;
 } SymbolTable;
 
 typedef struct
