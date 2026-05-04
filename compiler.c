@@ -234,9 +234,10 @@ static int alloc_reg(Compiler* C)
     return C->next_reg++;
 }
 
-static int symbol_define(SymbolTable* T, Token name, bool isConst, const char* src)
+static int symbol_define(Compiler* C, SymbolTable* T, Token name, bool isConst, const char* src)
 {
-    int slot = T->count;
+    //int slot = T->count;
+    int reg = alloc_reg(C);
 
     //for (int i = 0; i < T->count; i++)
     //{
@@ -258,8 +259,8 @@ static int symbol_define(SymbolTable* T, Token name, bool isConst, const char* s
         T->data = newData;
     }
 
-    T->data[T->count++] = (Symbol) {.name = name, .slot = slot, .scope_depth = T->scope_depth, .isConst = isConst};
-    return slot;
+    T->data[T->count++] = (Symbol) {.name = name, .reg = reg, .scope_depth = T->scope_depth, .isConst = isConst};
+    return reg;
 }
 
 static Symbol* symbols_resolve(SymbolTable* T, Token name, const char* src)
@@ -370,11 +371,11 @@ int compiler_expr(Compiler* C, Expr* expr)
             if (symbol == NULL)
                 compilerError("Variable '%.*s' has not yet been declared. Consider declaring it before using it", C->name, nameE->expr.base.location, nameE->name.length, &C->src[nameE->name.location.begin.offset]);
 
-            int slot = symbol->slot;
+            //int reg = symbol->reg;
 
-            int r = alloc_reg(C);
-            ir_emit(&C->ir, IR_LOAD_VAR, r, slot, 0, nameE->expr.base.location);
-            return r;
+            //int r = alloc_reg(C);
+            //ir_emit(&C->ir, IR_MOVE, r, reg, 0, nameE->expr.base.location);
+            return symbol->reg;
         }
         case EXPR_BINARY:
         {
@@ -452,10 +453,19 @@ int compiler_expr(Compiler* C, Expr* expr)
             if (symbol->isConst)
                 compilerError("Const '%.*s' cannot be modified", C->name, fix->expr.base.location, name->name.length, &C->src[name->name.location.begin.offset]);
 
-            int slot = symbol->slot;
 
-            int old = alloc_reg(C);
-            ir_emit(&C->ir, IR_LOAD_VAR, old, slot, 0, fix->target->base.location);
+            int reg = symbol->reg;
+
+            int old = -1;
+
+            if (!fix->isPre)
+            {
+                old = alloc_reg(C);
+                ir_emit(&C->ir, IR_MOVE, old, reg, 0, fix->target->base.location);
+            }
+            //int old = alloc_reg(C);
+            //int old = symbol->reg;
+            //ir_emit(&C->ir, IR_LOAD_VAR, old, reg, 0, fix->target->base.location);
 
             int one = alloc_reg(C);
             Value v = make_int(atoi("1"));
@@ -466,17 +476,20 @@ int compiler_expr(Compiler* C, Expr* expr)
 
             if (fix->op.type == M_INC)
             {
-                ir_emit(&C->ir, IR_ADD, result, old, one, fix->expr.base.location);
+                ir_emit(&C->ir, IR_ADD, result, reg, one, fix->expr.base.location);
             }
             else
             {
-                ir_emit(&C->ir, IR_SUB, result, old, one, fix->expr.base.location);
+                ir_emit(&C->ir, IR_SUB, result, reg, one, fix->expr.base.location);
             }
 
-            ir_emit(&C->ir, IR_STORE_VAR, slot, result, 0, fix->expr.base.location);
+            //ir_emit(&C->ir, IR_STORE_VAR, slot, result, 0, fix->expr.base.location);
+
+            if (reg != result)
+                ir_emit(&C->ir, IR_MOVE, reg, result, 0, fix->expr.base.location);
 
             if (fix->isPre)
-                return result;
+                return reg;
             else
                 return old;
         }
@@ -503,8 +516,7 @@ void compiler_stmt(Compiler* C, Stmt* stmt)
             for (int i = 0; i < var->namesCount; i++)
             {
                 //printf("line: %d, column: %d, offset: %d\n", var->names[i].location.begin.line, var->names[i].location.begin.column, var->names[i].location.begin.offset);
-                int slot = symbol_define(&C->symbol, var->names[i], var->isConst, C->src);
-
+                int reg = symbol_define(C, &C->symbol, var->names[i], var->isConst, C->src);
                 int value_reg;
 
                 if (i < var->valuesCount)
@@ -514,10 +526,14 @@ void compiler_stmt(Compiler* C, Stmt* stmt)
                 else
                 {
                     value_reg = alloc_reg(C);
-                    ir_emit(&C->ir, IR_LOAD_CONST, value_reg, 0, 0, var->values[var->valuesCount - 1]->base.location); // NaN, pendiente mejorar
+                    Value v = make_nan();
+                    int k = const_add(&C->constants, v);
+                    ir_emit(&C->ir, IR_LOAD_CONST, value_reg, k, 0, var->values[var->valuesCount - 1]->base.location); // NaN, pendiente mejorar
                 }
 
-                ir_emit(&C->ir, IR_STORE_VAR, slot, value_reg, 0, var->stmt.base.location);
+                if (reg != value_reg)
+                    ir_emit(&C->ir, IR_MOVE, reg, value_reg, 0, var->stmt.base.location);
+                //ir_emit(&C->ir, IR_STORE_VAR, reg, value_reg, 0, var->stmt.base.location);
             }
 
             return;
@@ -582,7 +598,7 @@ void compiler_stmt(Compiler* C, Stmt* stmt)
                 if (symbol->isConst)
                     compilerError("Const '%.*s' cannot be modified", C->name, assign->stmt.base.location, assign->names[i].length, &C->src[assign->names[i].location.begin.offset]);
 
-                int slot = symbol->slot;
+                int reg = symbol->reg;
 
                 int value_reg;
 
@@ -596,7 +612,9 @@ void compiler_stmt(Compiler* C, Stmt* stmt)
                     ir_emit(&C->ir, IR_LOAD_CONST, value_reg, 0, 0, assign->values[assign->valueCount - 1]->base.location); // NaN, pendiente mejorar
                 }
 
-                ir_emit(&C->ir, IR_STORE_VAR, slot, value_reg, 0, assign->stmt.base.location);
+                if (reg != value_reg)
+                    ir_emit(&C->ir, IR_MOVE, reg, value_reg, 0, assign->stmt.base.location);
+                //ir_emit(&C->ir, IR_STORE_VAR, reg, value_reg, 0, assign->stmt.base.location);
             }
             return;
         }
@@ -606,7 +624,7 @@ void compiler_stmt(Compiler* C, Stmt* stmt)
             StmtCompoundAssing* compound = (StmtCompoundAssing*) stmt;
             
             int value = compiler_expr(C, compound->value);
-            int target = compiler_expr(C, compound->target);
+            //int target = compiler_expr(C, compound->target);
 
             Symbol* symbol = symbols_resolve(&C->symbol, ((NameExpr*)compound->target)->name, C->src);
 
@@ -616,7 +634,7 @@ void compiler_stmt(Compiler* C, Stmt* stmt)
             if (symbol->isConst)
                 compilerError("Const '%.*s' cannot be modified", C->name, compound->stmt.base.location, ((NameExpr*)compound->target)->name.length, &C->src[compound->target->base.location.begin.offset]);
 
-            int slot = symbol->slot;
+            int target = symbol->reg;
 
             int r = alloc_reg(C);
 
@@ -636,7 +654,10 @@ void compiler_stmt(Compiler* C, Stmt* stmt)
             }
             //ir_emit(&C->ir, IR_LOAD_VAR, r1, target, 0);
             ir_emit(&C->ir, op, r, target, value, compound->value->base.location);
-            ir_emit(&C->ir, IR_STORE_VAR, slot, r, 0, compound->stmt.base.location);
+            
+            if (target != r)
+                ir_emit(&C->ir, IR_MOVE, target, r, 0, compound->stmt.base.location);
+            //ir_emit(&C->ir, IR_STORE_VAR, reg, r, 0, compound->stmt.base.location);
 
             return;
         }
@@ -685,7 +706,7 @@ static void print_ir(Compiler* C, int i)
     else if (ir.op == IR_STORE_VAR)
         printf("IR_STORE S%d R%d", ir.a, ir.b);
     else if (ir.op == IR_MOVE)
-        printf("IR_MOVE R%d R%d", ir.b, ir.a);
+        printf("IR_MOVE R%d R%d", ir.a, ir.b);
     else if (ir.op == IR_ADD)
         printf("IR_ADD R%d R%d R%d", ir.a, ir.b, ir.c);
     else if (ir.op == IR_SUB)

@@ -12,7 +12,7 @@ typedef enum
     IR_LOAD_CONST,  //  A, B            R(A) = K(B)
     IR_LOAD_VAR,    //  A, B            R(A) = S(B)
     IR_STORE_VAR,   //  A, B            S(A) = R(B)
-    IR_MOVE,        //  A, B            R(B) = R(A) 
+    IR_MOVE,        //  A, B            R(A) = R(B) 
 
     // Operaciones Aritmeticas
     IR_ADD,         // A, B, C        R(A) = R(B) + R(C)
@@ -87,7 +87,7 @@ typedef struct
 typedef struct
 {
     Token name;
-    int slot;
+    int reg;
     int scope_depth;
     int isConst;
 } Symbol;
