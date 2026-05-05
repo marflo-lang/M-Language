@@ -130,6 +130,7 @@
   <ItemGroup>
     <ClCompile Include="allocator.c" />
     <ClCompile Include="cli.c" />
+    <ClCompile Include="codegen.c" />
     <ClCompile Include="compiler.c" />
     <ClCompile Include="err.c" />
     <ClCompile Include="lexer.c" />
@@ -139,6 +140,7 @@
   <ItemGroup>
     <ClInclude Include="allocator.h" />
     <ClInclude Include="cli.h" />
+    <ClInclude Include="codegen.h" />
     <ClInclude Include="compiler.h" />
     <ClInclude Include="err.h" />
     <ClInclude Include="lexer.h" />

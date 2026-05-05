@@ -16,17 +16,17 @@
 
 #define MAX_FRAMES  64
 
-typedef struct
-{
-    int line;
-    int column;
-}Position;
-
-typedef struct
-{
-    Position* begin;
-    Position* end;
-}Location;
+//typedef struct
+//{
+//    int line;
+//    int column;
+//}Position;
+//
+//typedef struct
+//{
+//    Position* begin;
+//    Position* end;
+//}Location;
 
 typedef uint32_t Instruction;
 

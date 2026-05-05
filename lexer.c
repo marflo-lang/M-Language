@@ -11,7 +11,7 @@ static void consume(Lexer* L)
 {
     if (L->position >= L->length)
     {
-        L->current == '\0';
+        L->current = '\0';
         return;
     }
     assert(L->position < L->length);
@@ -33,7 +33,7 @@ static void consumeNoLine(Lexer* L)
 {
     if (L->position >= L->length)
     {
-        L->current == '\0';
+        L->current = '\0';
         return;
     }
     assert(L->position < L->length);

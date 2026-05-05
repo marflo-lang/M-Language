@@ -29,3 +29,9 @@ typedef struct
     bool has_error;
     char* error_message;
 }VM;
+
+
+Chunk* chunk_new();
+void chunk_init(Chunk* chunk, ConstTable* c);
+void chunk_write(Chunk* chunk, Instruction instr, int line);
+

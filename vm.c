@@ -1,3 +1,7 @@
+
+#include "err.h"
+#include "compiler.h"
+
 #include <stdio.h>
 #include <stdint.h>
 #include <inttypes.h>
@@ -42,6 +46,41 @@ void vm_execute(Chunk* main_chunk)
     vm->frame_count = 1;
 
     vm_run(vm);
+}
+
+Chunk* chunk_new()
+{
+    Chunk* chunk = malloc(sizeof(Chunk));
+
+    if (chunk == NULL)
+    {
+        memoryCrash("Virtual Machine");
+        exit(1);
+    }
+
+    chunk->cc = -1;
+    chunk->constants = NULL;
+    chunk->ic = -1;
+    chunk->instructions = NULL;
+    chunk->lines = NULL;
+    chunk->parameter_count = -1;
+    chunk->rc = 64 * 64;
+    chunk->return_count = -1;
+}
+
+void chunk_init(Chunk* chunk, ConstTable* c)
+{
+    chunk->cc = c->count;
+    chunk->constants = c->data;
+    chunk->ic = 0;
+    //chunk->instructions = 
+}
+
+void chunk_write(Chunk* chunk, Instruction instr, int line)
+{
+    chunk->instructions[chunk->ic] = instr;
+    chunk->lines[chunk->ic] = line;
+    chunk->ic++;
 }
 
 /*int main(void)

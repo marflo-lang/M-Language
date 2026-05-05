@@ -180,6 +180,16 @@ static Value token_to_value(Compiler* C, Token t)
             make_nil();
         }
 
+        case M_V_MALFORMED_NUMBER:
+        {
+            compilerError("Expected a primitive type, but got 'Malformed Number'", C->name, t.location);
+        }
+
+        case M_V_UNFINISHED_STRING:
+        {
+            compilerError("Expected a primitive type, but got 'Unfinished String'", C->name, t.location);
+        }
+
         default:
             return make_nan();
     }

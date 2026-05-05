@@ -177,7 +177,7 @@ static void consume(Parser* P, LTokenType ttype, const char* expected)
         //);
         ////print_token(P->src, P->current);
         //got[len] = '\0';
-        char got = getText(P->current.length, P->src, P->current.location.begin.offset);
+        char* got = getText(P->current.length, P->src, P->current.location.begin.offset);
         expectedButGot(expected, P->current.type == M_EOF ? "<eof>" : got, NULL, P->name, P->current.location);
         free(got);
     }
@@ -621,10 +621,9 @@ static Stmt* parser_assign(Parser* P, Expr* left)
             break;
         }
 
-        Expr* name = parser_expression(P);
-        if (!isLValue(name))
-            syntaxError("Expected a variable name on assign statement", P->name, name->base.location);
-        tempNames[namesCount++] = ((NameExpr*)name)->name;
+        Token name = P->current;
+        consume(P, M_V_IDENTIFIER, "a variable name on assign statement");
+        tempNames[namesCount++] = name;
     }
 
     Expr* tempValues[8];
@@ -645,6 +644,11 @@ static Stmt* parser_assign(Parser* P, Expr* left)
             tempValues[valuesCount++] = parser_expression(P);
         }
 
+    }
+    else
+    {
+        syntaxError("Expected '=' on assign statement", P->name, P->current.location);
+        return parser_stmt_error(P, left);
     }
 
 

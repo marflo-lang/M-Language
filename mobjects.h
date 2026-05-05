@@ -3,25 +3,35 @@
 #include <stdbool.h>
 #include "m.h"
 
-typedef struct
-{
-    int length;
-    char* text;
-}String;
-
-typedef union
-{
-    int i;
-    double f;
-    bool b;
-    String* s;
-}Data;
-
-typedef struct
-{
-    ValueType type;
-    Data data;
-}Value;
+//typedef enum
+//{
+//    NaN,
+//    NIL,
+//    INT,
+//    FLOAT,
+//    BOOLEAN,
+//    STRING
+//} RValueType;
+//
+//typedef struct
+//{
+//    int length;
+//    char* text;
+//}String;
+//
+//typedef union
+//{
+//    int i;
+//    double f;
+//    bool b;
+//    String* s;
+//}Data;
+//
+//typedef struct
+//{
+//    RValueType type;
+//    Data data;
+//} RValue;
 
 /* macros of types */
 #define isnan(o)    (ttype(o) == NaN)
@@ -38,6 +48,6 @@ typedef struct
 #define bvalue(o)   (o)->data.b
 #define svalue(o)   &(o)->data.s
 
-#define isfalse(o)  (isnil(o) || isboolean(o) && bvalue(o) == false)
+#define isfalse(o)  (isnan(o) || isnil(o) || isboolean(o) && bvalue(o) == false)
 
 
