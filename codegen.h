@@ -39,6 +39,7 @@ typedef enum
     // Control de flujo
     OP_JUMP,        // Ax                 pc += Ax
     OP_JUMP_IF_FALSE,   // A, Bx        if !A -> pc += Bx
+    OP_HALT
 } BytecodeOp;
 
 
@@ -61,6 +62,6 @@ typedef struct
 } CodeGen;
 
 
-void generator_init(const char* src, const char* name, IRList* ir, ConstTable* T);
+CodeGen* generator_init(const char* src, const char* name, IRList* ir, ConstTable* T);
 Chunk* generate_bydecode(CodeGen* G);
 

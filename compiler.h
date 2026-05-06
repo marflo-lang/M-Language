@@ -37,6 +37,7 @@ typedef enum
     // Control de flujo
     IR_JUMP,        // Ax                 pc += Ax
     IR_JUMP_IF_FALSE,   // A, Bx        if !A -> pc += Bx
+    IR_HALT,
 } IROpCode;
 
 typedef struct

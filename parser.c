@@ -103,11 +103,32 @@ ParserRule rules[] = {
     [M_INC] = {parser_prefix, parser_posfix, PREC_POSTFIX},
     [M_DEC] = {parser_prefix, parser_posfix, PREC_POSTFIX},
 
-    //[M_EOF] = {NULL, NULL, PREC_NONE},
 
-    //[M_INC] = {},
-
-
+    // Expressions terminators
+    [M_VAR] = {NULL, NULL, PREC_NONE},
+    [M_CONST] = {NULL, NULL, PREC_NONE},
+    [M_IF] = {NULL, NULL, PREC_NONE},
+    [M_ELSEIF] = {NULL, NULL, PREC_NONE},
+    [M_ELSE] = {NULL, NULL, PREC_NONE},
+    [M_V_NIL] = {NULL, NULL, PREC_NONE},
+    [M_ASSING] = {NULL, NULL, PREC_NONE},
+    [M_PLUS_ASSING] = {NULL, NULL, PREC_NONE},
+    [M_MINUS_ASSING] = {NULL, NULL, PREC_NONE},
+    [M_STAR_ASSING] = {NULL, NULL, PREC_NONE},
+    [M_SLASH_ASSING] = {NULL, NULL, PREC_NONE},
+    [M_FLOOR_DIV_ASSING] = {NULL, NULL, PREC_NONE},
+    [M_CONCAT_ASSING] = {NULL, NULL, PREC_NONE},
+    [M_POW_ASSING] = {NULL, NULL, PREC_NONE},
+    [M_MOD_ASSING] = {NULL, NULL, PREC_NONE},
+    [M_RPAREN] = {NULL, NULL, PREC_NONE},
+    [M_RBRACE] = {NULL, NULL, PREC_NONE},
+    [M_SEMICOLON] = {NULL, NULL, PREC_NONE},
+    [M_COMMA] = {NULL, NULL, PREC_NONE},
+    [M_SHORT_COMMENT] = {NULL, NULL, PREC_NONE},
+    [M_LONG_COMMENT_START] = {NULL, NULL, PREC_NONE},
+    [M_LONG_COMMENT_FINISH] = {NULL, NULL, PREC_NONE},
+    [M_EOF] = {NULL, NULL, PREC_NONE},
+    [M_ERROR] = {NULL, NULL, PREC_NONE},
 };
 
 /*
@@ -287,26 +308,26 @@ static Expr* parser_precedence(Parser* P, Precedence prec)
     }
     Expr* left = prefix(P);
 
-    ParserRule* newRule = get_rule(P->current.type);
+    //ParserRule* newRule = get_rule(P->current.type);
 
-    if (newRule != NULL)
-    {
-        while (!is_expr_terminator(P->current.type) && prec <= get_rule(P->current.type)->precedence)
+    //if (newRule != NULL)
+    //{
+        while (!is_expr_terminator(P->current.type) && get_rule(P->current.type)->infix != NULL && prec <= get_rule(P->current.type)->precedence)
         {
             InfixFn infix = get_rule(P->current.type)->infix;
 
-            if (infix == NULL)
-            {
-                //printf("a\n");
-                return left;
-            }
+            //if (infix == NULL)
+            //{
+            //    //printf("a\n");
+            //    return left;
+            //}
 
             advance(P);
 
             left = infix(P, left);
         }
 
-    }
+    //}
 
     //print("===============");
     return left;
@@ -628,7 +649,7 @@ static Stmt* parser_assign(Parser* P, Expr* left)
 
     Expr* tempValues[8];
     int valuesCount = 0;
-
+    
     if (match(P, M_ASSING))
     {
         Expr* expr = parser_expression(P);
@@ -648,7 +669,7 @@ static Stmt* parser_assign(Parser* P, Expr* left)
     else
     {
         syntaxError("Expected '=' on assign statement", P->name, P->current.location);
-        return parser_stmt_error(P, left);
+        return parser_stmt_error(P, &(Expr){.expr_type = EXPR_ERROR, .base = {.location = P->current.location, .ttype = NODE_EXPR}});
     }
 
 
@@ -789,7 +810,7 @@ static Stmt* parser_expr_or_assignment_stmt(Parser* P)
         else
             return parser_compound_assing(P, first);
 
-    if (match(P, M_COMMA))
+    if (P->current.type == M_COMMA)
         return parser_assign(P, first);
 
     match(P, M_SEMICOLON);

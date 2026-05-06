@@ -11,6 +11,7 @@
 #include "parser.h"
 #include "compiler.h"
 #include "print.h"
+#include "codegen.h"
 
 static char* trim_left(char* str)
 {
@@ -279,15 +280,36 @@ int main(void)
         /*
         ========== Compiler ==========
         */
-
+        
         Compiler* C = compiler_init(s->src, config.script_path);
         compiler_program(C, stmt);
 #if (defined(DEBUG) && DEBUG == 1) && (defined(COMPILER_DEBUG) && COMPILER_DEBUG == 1)
         compiler_print(C);
 #endif 
 
+        /*
+        ========== Code Generator ==========
+        */
+        //printf("enter codegen\n");
+        CodeGen* G = generator_init(s->src, config.script_path, &C->ir, &C->constants);
+        //printf("enter bytecode\n");
+        Chunk* mainChunk = generate_bydecode(G);
         clock_t endCompile = clock();
         printf("The time it took to compile the program is %f seconds\n", (double)(endCompile - startCompile) / CLOCKS_PER_SEC);
+        
+        /*
+        ========== Virtual Machine ==========
+        */
+
+        clock_t startRun = clock();
+        //printf("enter vm\n");
+        vm_execute(mainChunk);
+
+        clock_t endRun = clock();
+        printf("The time it took to run the program is %f seconds\n", (double)(endRun - startRun) / CLOCKS_PER_SEC);
+
+
+
         //compilerError("Esto es una prueba %s, probando %d, bye %c", "test", locationCNum(1, 2, 3, 4, 5, 6), "prueba123456", 58, 'M');
         //compilerError("Variable '%.*s' has not yet been declared. Consider declaring it before using it", "test2", locationCNum(1, 2, 3, 4, 5, 6), 5, &s->src[2]);
         //*/

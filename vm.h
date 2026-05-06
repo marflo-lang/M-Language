@@ -6,10 +6,11 @@
 typedef struct Chunk
 {
     Instruction* instructions; // array of Instruction
-    int ic; // Instruction Count, the actual instruction
+    int actual_instruction;
+    int instruction_capacity; // Instruction Count, the actual instruction
     Value* constants; // array of Value
-    int cc; // Constant Count, the actual actual constant
-    int rc; // Register Count, the max of registers
+    int constants_capacity; // Constant Count, the actual actual constant
+    int register_capacity; // Register Count, the max of registers
     int parameter_count; // Parameter Count
     int return_count; // Return Count
     int* lines; // array of the code lines
@@ -32,6 +33,8 @@ typedef struct
 
 
 Chunk* chunk_new();
-void chunk_init(Chunk* chunk, ConstTable* c);
+void chunk_init(Chunk* chunk, ConstTable* c, IRList* ir);
 void chunk_write(Chunk* chunk, Instruction instr, int line);
+
+void vm_execute(Chunk* main_chunk);
 

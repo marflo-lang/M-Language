@@ -684,6 +684,7 @@ void compiler_stmt(Compiler* C, Stmt* stmt)
 void compiler_program(Compiler* C, Stmt* stmt)
 {
     compiler_stmt(C, stmt);
+    ir_emit(&C->ir, IR_HALT, 0, 0, 0, locationCPos(stmt->base.location.end, stmt->base.location.end));
 }
 
 #if (defined(DEBUG) && DEBUG == 1) && (defined(COMPILER_DEBUG) && COMPILER_DEBUG == 1)
@@ -709,7 +710,7 @@ static void print_ir(Compiler* C, int i)
             printf(" [nil]");
         else if (v.type == VAL_STRING)
             printf(" ['%.*s']", v.string.length, v.string.chars);
-            
+
     }
     else if (ir.op == IR_LOAD_VAR)
         printf("IR_LOADV R%d S%d", ir.a, ir.b);
@@ -753,6 +754,8 @@ static void print_ir(Compiler* C, int i)
         printf("IR_JUMP L%d", ir.b);
     else if (ir.op == IR_JUMP_IF_FALSE)
         printf("IR_JUMP_IF_FALSE R%d L%d", ir.a, ir.b);
+    else if (ir.op == IR_HALT)
+        printf("IR_HALT");
     else
         printf("Invalid op '%d'", ir.op);
     printf("\n");
