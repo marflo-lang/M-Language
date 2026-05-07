@@ -303,7 +303,7 @@ int main(void)
 
         clock_t startRun = clock();
         //printf("enter vm\n");
-        vm_execute(mainChunk);
+        vm_execute(mainChunk, config.script_path);
 
         clock_t endRun = clock();
         printf("The time it took to run the program is %f seconds\n", (double)(endRun - startRun) / CLOCKS_PER_SEC);

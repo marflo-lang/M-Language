@@ -11,6 +11,14 @@ static void printStartFormatError(const char* name)
     printf("\033[31m");
 }
 
+static void printStartRuntimeFormatError(const char* name, int line)
+{
+    printf("\033[1;31m");
+    printf("Runtime Error at %s:%d:", name, line);
+    printf("\033[0m");
+    printf("\033[31m");
+}
+
 static void printEndFormatError(Location location)
 {
     //print("at line", location.begin.line, "column", location.begin.column, "to column", location.end.column);
@@ -144,3 +152,33 @@ void compilerError(const char* message, const char* name, Location location, ...
     printEndFormatError(location);
     exit(1);
 }
+
+// Runtime errors
+void runtimeError(const char* message, const char* name, int line, ...)
+{
+    printStartRuntimeFormatError(name, line);
+    printf("\033[0m");
+    printf("\033[4;31m");
+    printf("\033[0m");
+    printf("\033[31m");
+    printf(" ");
+    va_list args;
+    va_start(args, message);
+    vprintf(message, args);
+    va_end(args);
+    printf(" ");
+    printf("\033[0m");
+    printf("\n");
+    exit(1);
+}
+
+void invalidOperandsError(const char* name, int line, const char* op, const char* type1, const char* type2)
+{
+    runtimeError("TypeError: Invalid operands '%s' and '%s' for operator '%s'", name, line, type1 != NULL ? type1 : "", type2 != NULL ? type2 : "", op);
+}
+
+void arithmeticError(const char* name, int line)
+{
+    runtimeError("ArithmeticError: Division By Zero", name, line);
+}
+

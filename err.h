@@ -27,3 +27,8 @@ void expectedToClose(const char* expected, const char* close, const char* got, c
 // Errores del Compiler
 void compilerError(const char* message, const char* name, Location location, ...);
 
+// Errores del runtime
+void runtimeError(const char* message, const char* name, int line, ...);
+void invalidOperandsError(const char* name, int line, const char* op, const char* type1, const char* type2);
+void arithmeticError(const char* name, int line);
+

@@ -2,6 +2,7 @@
 
 #include "mconfig.h"
 #include "mobjects.h"
+#include "compiler.h"
 
 typedef struct Chunk
 {
@@ -25,10 +26,14 @@ typedef struct
 
 typedef struct
 {
-    CallFrame frame[MAX_FRAMES];
+    CallFrame frames[MAX_FRAMES];
     int frame_count; // amount frames active
+    
+    Value stack[M_MAXSTACK];
+    Value* stack_top;
     bool has_error;
     char* error_message;
+    const char* name;
 }VM;
 
 
@@ -36,5 +41,5 @@ Chunk* chunk_new();
 void chunk_init(Chunk* chunk, ConstTable* c, IRList* ir);
 void chunk_write(Chunk* chunk, Instruction instr, int line);
 
-void vm_execute(Chunk* main_chunk);
+void vm_execute(Chunk* main_chunk, const char* name);
 
