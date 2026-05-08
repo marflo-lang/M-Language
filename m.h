@@ -24,4 +24,6 @@ typedef enum /*ValueType*/
 #define MIN_STACK 20
 
 #define cast(t, expr)   ((t) (expr))
+#define cast_int(expr)  cast(int, expr)
+#define cast_double(expr)   cast(double, expr)
 

@@ -182,3 +182,13 @@ void arithmeticError(const char* name, int line)
     runtimeError("ArithmeticError: Division By Zero", name, line);
 }
 
+void memoryError(const char* name, int line)
+{
+    runtimeError("MemoryError: An error occurred in memory allocation", name, line);
+}
+
+void unknownType(const char* name, int line, int type)
+{
+    runtimeError("InternalError: Unknown Type; Number Enum Type %d", name, line, type);
+}
+

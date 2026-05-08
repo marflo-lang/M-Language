@@ -10,58 +10,20 @@
 #include <math.h>
 #include <string.h>
 
-static bool value_equals(Value a, Value b)
-{
-    if (a.type != b.type) return false;
-
-    switch (a.type)
-    {
-    case VAL_INT:
-    {
-        return a.i == b.i;
-    }
-
-    case VAL_FLOAT:
-    {
-        return a.f == b.f;
-    }
-
-    case VAL_BOOLEAN:
-    {
-        return a.b == b.b;
-    }
-
-    case VAL_STRING:
-    {
-        return a.string.length == b.string.length && (strncmp(a.string.chars, b.string.chars, a.string.length) == 0);
-    }
-
-    case VAL_NIL:
-    {
-        return true;
-    }
-
-    case VAL_NAN:
-    {
-        return true;
-    }
-
-    }
-}
 
 static const char* getValueTypeName(Value v)
 {
-    if (v.type == VAL_INT)
+    if (isint(v))
         return "int";
-    else if (v.type == VAL_FLOAT)
+    else if (isfloat(v))
         return "float";
-    else if (v.type == VAL_STRING)
+    else if (isstring(v))
         return "string";
-    else if (v.type == VAL_BOOLEAN)
+    else if (isboolean(v))
         return "boolean";
-    else if (v.type == VAL_NIL)
+    else if (isnil(v))
         return "nil";
-    else if (v.type == VAL_NAN)
+    else if (ismnan(v))
         return "NaN";
     else
         return "Unrecognized type";
@@ -69,17 +31,17 @@ static const char* getValueTypeName(Value v)
 
 static bool can_coerce_to_float(Value v, double* out_val)
 {
-    if (v.type == VAL_INT)
+    if (isint(v))
     {
-        *out_val = (double) v.i;
+        *out_val = cast_double(ivalue(v));
         return true;
     }
-    else if (v.type == VAL_FLOAT)
+    else if (isfloat(v))
     {
-        *out_val = v.f;
+        *out_val = fvalue(v);
         return true;
     }
-    else if (v.type == VAL_STRING)
+    else if (isstring(v))
     {
         // aqui va funcion para convertir de string a float
         return false; // temporal
@@ -100,7 +62,7 @@ static void vm_run(VM* vm)
     while(true)
     {
         i++;
-        Instruction instr = *pc++;
+        const Instruction instr = *pc++;
 
         uint8_t op = GET_OPCODE(instr);
 
@@ -135,16 +97,14 @@ static void vm_run(VM* vm)
                 uint8_t c = GET_C(instr);
 
                 // fast-path
-                if (R[b].type == VAL_INT && R[c].type == VAL_INT)
+                if (isint(R[b]) && isint(R[c]))
                 {
-                    R[a].type = VAL_INT;
-                    R[a].i = R[b].i + R[c].i;
+                    setint(R[a], ivalue(R[b]) + ivalue(R[c]));
                     printf("ADD %i\n", R[a].i);
                 }
-                else if (R[b].type == VAL_FLOAT && R[c].type == VAL_FLOAT)
+                else if (isfloat(R[b]) && isfloat(R[c]))
                 {
-                    R[a].type = VAL_FLOAT;
-                    R[a].f = R[b].f + R[c].f;
+                    setfloat(R[a], fvalue(R[b]) + fvalue(R[c]));
                     printf("ADD %f\n", R[a].f);
 
                 }
@@ -154,8 +114,7 @@ static void vm_run(VM* vm)
                     double num_b, num_c;
                     if (can_coerce_to_float(R[b], &num_b) && can_coerce_to_float(R[c], &num_c))
                     {
-                        R[a].type = VAL_FLOAT;
-                        R[a].f = num_b + num_c;
+                        setfloat(R[a], num_b + num_c);
                         printf("ADD %f\n", R[a].f);
                     }
                     else
@@ -178,15 +137,14 @@ static void vm_run(VM* vm)
                 uint8_t c = GET_C(instr);
 
                 // fast-path
-                if (R[b].type == VAL_INT && R[c].type == VAL_INT)
+                //if (R[b].type == VAL_INT && R[c].type == VAL_INT)
+                if (isint(R[b]) && isint(R[c]))
                 {
-                    R[a].type = VAL_INT;
-                    R[a].i = R[b].i - R[c].i;
+                    setint(R[a], ivalue(R[b]) + ivalue(R[c]));
                 }
-                else if (R[b].type == VAL_FLOAT && R[c].type == VAL_FLOAT)
+                else if (isfloat(R[b]) && isfloat(R[c]))
                 {
-                    R[a].type = VAL_FLOAT;
-                    R[a].f = R[b].f - R[c].f;
+                    setfloat(R[a], fvalue(R[b]) - fvalue(R[c]));
                 }
                 else
                 {
@@ -194,8 +152,7 @@ static void vm_run(VM* vm)
                     double num_b, num_c;
                     if (can_coerce_to_float(R[b], &num_b) && can_coerce_to_float(R[c], &num_c))
                     {
-                        R[a].type = VAL_FLOAT;
-                        R[a].f = num_b - num_c;
+                        setfloat(R[a], num_b - num_c);
                     }
                     else
                     {
@@ -217,15 +174,13 @@ static void vm_run(VM* vm)
                 uint8_t c = GET_C(instr);
 
                 // fast-path
-                if (R[b].type == VAL_INT && R[c].type == VAL_INT)
+                if (isint(R[b]) && isint(R[c]))
                 {
-                    R[a].type = VAL_INT;
-                    R[a].i = R[b].i * R[c].i;
+                    setint(R[a], ivalue(R[b]) * ivalue(R[c]));
                 }
-                else if (R[b].type == VAL_FLOAT && R[c].type == VAL_FLOAT)
+                else if (isfloat(R[b]) && isfloat(R[c]))
                 {
-                    R[a].type = VAL_FLOAT;
-                    R[a].f = R[b].f * R[c].f;
+                    setfloat(R[a], fvalue(R[b]) * fvalue(R[c]));
                 }
                 else
                 {
@@ -233,8 +188,7 @@ static void vm_run(VM* vm)
                     double num_b, num_c;
                     if (can_coerce_to_float(R[b], &num_b) && can_coerce_to_float(R[c], &num_c))
                     {
-                        R[a].type = VAL_FLOAT;
-                        R[a].f = num_b * num_c;
+                        setfloat(R[a], num_b * num_c);
                     }
                     else
                     {
@@ -256,19 +210,17 @@ static void vm_run(VM* vm)
                 uint8_t c = GET_C(instr);
 
                 // fast-path
-                if ((R[c].type == VAL_INT && R[c].i == 0) || (R[c].type == VAL_FLOAT && R[c].f == 0.0))
+                if ((isint(R[c]) && ivalue(R[c]) == 0) || (isfloat(R[c]) && fvalue(R[c]) == 0.0))
                 {
                     arithmeticError(vm->name, chunk->lines[i]);
                 }
-                if (R[b].type == VAL_INT && R[c].type == VAL_INT)
+                if (isint(R[b]) && isint(R[c]))
                 {
-                    R[a].type = VAL_INT;
-                    R[a].i = R[b].i / R[c].i;
+                    setint(R[a], ivalue(R[b]) / ivalue(R[c]));
                 }
-                else if (R[b].type == VAL_FLOAT && R[c].type == VAL_FLOAT)
+                else if (isfloat(R[b]) && isfloat(R[c]))
                 {
-                    R[a].type = VAL_FLOAT;
-                    R[a].f = R[b].f / R[c].f;
+                    setfloat(R[a], fvalue(R[b]) / fvalue(R[c]));
                 }
                 else
                 {
@@ -280,8 +232,7 @@ static void vm_run(VM* vm)
                         {
                             arithmeticError(vm->name, chunk->lines[i]);
                         }
-                        R[a].type = VAL_FLOAT;
-                        R[a].f = num_b / num_c;
+                        setfloat(R[a], num_b / num_c);
                     }
                     else
                     {
@@ -303,19 +254,21 @@ static void vm_run(VM* vm)
                 uint8_t c = GET_C(instr);
 
                 // fast-path
-                if ((R[c].type == VAL_INT && R[c].i == 0) || (R[c].type == VAL_FLOAT && R[c].f == 0.0))
+                if ((isint(R[c]) && ivalue(R[c]) == 0) || (isfloat(R[c]) && fvalue(R[c]) == 0.0))
                 {
                     arithmeticError(vm->name, chunk->lines[i]);
                 }
-                if (R[b].type == VAL_INT && R[c].type == VAL_INT)
+                if (isint(R[b]) && isint(R[c]))
                 {
-                    R[a].type = VAL_INT;
-                    R[a].i = (int) floor(R[b].i / R[c].i);
+                    //R[a].type = VAL_INT;
+                    //R[a].i = (int) floor(R[b].i / R[c].i);
+                    setint(R[a], cast_int(floor(cast_double(ivalue(R[b])) / cast_double(ivalue(R[c])))));
                 }
-                else if (R[b].type == VAL_FLOAT && R[c].type == VAL_FLOAT)
+                else if (isfloat(R[b]) && isfloat(R[c]))
                 {
-                    R[a].type = VAL_FLOAT;
-                    R[a].f = floor(R[b].f / R[c].f);
+                    //R[a].type = VAL_FLOAT;
+                    //R[a].f = floor(R[b].f / R[c].f);
+                    setfloat(R[a], floor(fvalue(R[b]) / fvalue(R[c])));
                 }
                 else
                 {
@@ -327,8 +280,9 @@ static void vm_run(VM* vm)
                         {
                             arithmeticError(vm->name, chunk->lines[i]);
                         }
-                        R[a].type = VAL_FLOAT;
-                        R[a].f = floor(num_b / num_c);
+                        //R[a].type = VAL_FLOAT;
+                        //R[a].f = floor(num_b / num_c);
+                        setfloat(R[a], floor(num_b / num_c));
                     }
                     else
                     {
@@ -350,19 +304,21 @@ static void vm_run(VM* vm)
                 uint8_t c = GET_C(instr);
 
                 // fast-path
-                if ((R[c].type == VAL_INT && R[c].i == 0) || (R[c].type == VAL_FLOAT && R[c].f == 0.0))
+                if ((isint(R[c]) && ivalue(R[c]) == 0) || (isfloat(R[c]) && fvalue(R[c]) == 0.0))
                 {
                     arithmeticError(vm->name, chunk->lines[i]);
                 }
-                if (R[b].type == VAL_INT && R[c].type == VAL_INT)
+                if (isint(R[b]) && isint(R[c]))
                 {
-                    R[a].type = VAL_INT;
-                    R[a].i = (int) (R[b].i % R[c].i);
+                    //R[a].type = VAL_INT;
+                    //R[a].i = (int) (R[b].i % R[c].i);
+                    setint(R[a], cast_int(fmod(cast_double(ivalue(R[b])), cast_double(ivalue(R[c])))));
                 }
-                else if (R[b].type == VAL_FLOAT && R[c].type == VAL_FLOAT)
+                else if (isfloat(R[b]) && isfloat(R[c]))
                 {
-                    R[a].type = VAL_FLOAT;
-                    R[a].f = fmod(R[b].f, R[c].f);
+                    //R[a].type = VAL_FLOAT;
+                    //R[a].f = fmod(R[b].f, R[c].f);
+                    setfloat(R[a], fmod(fvalue(R[b]), fvalue(R[c])));
                 }
                 else
                 {
@@ -374,8 +330,9 @@ static void vm_run(VM* vm)
                         {
                             arithmeticError(vm->name, chunk->lines[i]);
                         }
-                        R[a].type = VAL_FLOAT;
-                        R[a].f = fmod(num_b, num_c);
+                        //R[a].type = VAL_FLOAT;
+                        //R[a].f = fmod(num_b, num_c);
+                        setfloat(R[a], fmod(num_b, num_c));
                     }
                     else
                     {
@@ -397,56 +354,63 @@ static void vm_run(VM* vm)
                 uint8_t c = GET_C(instr);
 
                 // fast-path
-                if (R[b].type == VAL_INT && R[c].type == VAL_INT)
+                if (isint(R[b]) && isint(R[c]))
                 {
-                    R[a].type = VAL_INT;
-                    int valb = R[b].i;
-                    int valc = R[c].i;
+                    int valb = ivalue(R[b]);
+                    int valc = ivalue(R[c]);
                     // fast-paths because pow() is too slowly
                     if (valc == 2)
                     {
-                        R[a].i = valb * valb;
+                        setint(R[a], valb * valb);
                     }
                     else if (valc == 3)
                     {
-                        R[a].i = valb * valb * valb;
+                        setint(R[a], valb * valb * valb);
                     }
                     else if (valc == 0)
                     {
-                        R[a].i = 1;
+                        setint(R[a], 1);
+                    }
+                    else if (valc == 1)
+                    {
+                        setint(R[a], valb);
                     }
                     else
                     {
                         // slow-path
-                        R[a].i = (int) pow(valb, valc);
+                        //R[a].i = (int) pow(valb, valc);
+                        setint(R[a], cast_int(pow(valb, valc)));
                     }
                 }
-                else if (R[b].type == VAL_FLOAT && R[c].type == VAL_FLOAT)
+                else if (isfloat(R[b]) && isfloat(R[c]))
                 {
-                    R[a].type = VAL_FLOAT;
-                    double valb = R[b].f;
-                    double valc = R[c].f;
+                    double valb = fvalue(R[b]);
+                    double valc = fvalue(R[c]);
                     // fast-paths because pow() is too slowly
                     if (valc == 2.0)
                     {
-                        R[a].f = valb * valb;
+                        setfloat(R[a], valb * valb);
                     }
                     else if (valc == 0.5)
                     {
-                        R[a].f = sqrt(valb);
+                        setfloat(R[a], sqrt(valb));
                     }
                     else if (valc == 3.0)
                     {
-                        R[a].f = valb * valb * valb;
+                        setfloat(R[a], valb * valb * valb);
                     }
                     else if (valc == 0.0)
                     {
-                        R[a].f = 1.0;
+                        setfloat(R[a], 1.0);
+                    }
+                    else if (valc == 1.0)
+                    {
+                        setfloat(R[a], valb);
                     }
                     else
                     {
                         // slow-path
-                        R[a].f = pow(valb, valc);
+                        setfloat(R[a], pow(valb, valc));
                     }
                 }
                 else
@@ -455,8 +419,7 @@ static void vm_run(VM* vm)
                     double num_b, num_c;
                     if (can_coerce_to_float(R[b], &num_b) && can_coerce_to_float(R[c], &num_c))
                     {
-                        R[a].type = VAL_FLOAT;
-                        R[a].f = pow(num_b, num_c);
+                        setfloat(R[a], pow(num_b, num_c));
                     }
                     else
                     {
@@ -478,19 +441,25 @@ static void vm_run(VM* vm)
                 uint8_t c = GET_C(instr);
 
                 // fast-path
-                if (R[b].type == VAL_STRING && R[c].type == VAL_STRING)
+                //if (R[b].type == VAL_STRING && R[c].type == VAL_STRING)
+                if (isstring(R[b]) && isstring(R[c]))
                 {
-                    R[a].type = VAL_STRING;
-                    R[a].string.length = R[b].string.length + R[c].string.length;
-                    //R[a].i = R[b].i * R[c].i;
-                    const char* text1 = R[b].string.chars;
-                    const char* text2 = R[c].string.chars;
+                    //R[a].type = VAL_STRING;
+                    //R[a].string.length = R[b].string.length + R[c].string.length;
+                    int newLength = slenvalue(R[b]) + slenvalue(R[c]);
 
-                    char* result = "";
-                    memcpy(result, text1, R[b].string.length);
-                    strcat_s(result, R[a].string.length, text2);
+                    char* result = malloc(newLength + 1);
+                    if (result == NULL)
+                    {
+                        memoryCrash("VM");
+                        exit(1);
+                    }
+                    
+                    memcpy(result, svalue(R[b]), slenvalue(R[b]));
+                    memcpy(result + slenvalue(R[b]), svalue(R[c]), slenvalue(R[c]));
+                    result[newLength] = '\0';
 
-                    R[a].string.chars = result;
+                    setstring(R[a], result, newLength);
                 }
                 else
                 {
@@ -520,15 +489,19 @@ static void vm_run(VM* vm)
                 uint8_t bx = GET_Bx(instr);
 
                 // fast-path
-                if (R[bx].type == VAL_INT)
+                //if (R[bx].type == VAL_INT)
+                if (isint(R[bx]))
                 {
-                    R[a].type = VAL_INT;
-                    R[a].i = -R[bx].i;
+                    //R[a].type = VAL_INT;
+                    //R[a].i = -R[bx].i;
+                    setint(R[a], -ivalue(R[bx]));
                 }
-                else if (R[bx].type == VAL_FLOAT)
+                //else if (R[bx].type == VAL_FLOAT)
+                else if (isfloat(R[bx]))
                 {
-                    R[a].type = VAL_FLOAT;
-                    R[a].f = -R[bx].f;
+                    //R[a].type = VAL_FLOAT;
+                    //R[a].f = -R[bx].f;
+                    setfloat(R[a], -fvalue(R[bx]));
                 }
                 else
                 {
@@ -536,8 +509,9 @@ static void vm_run(VM* vm)
                     double num_b;
                     if (can_coerce_to_float(R[bx], &num_b))
                     {
-                        R[a].type = VAL_FLOAT;
-                        R[a].f = -num_b;
+                        //R[a].type = VAL_FLOAT;
+                        //R[a].f = -num_b;
+                        setfloat(R[a], -num_b);
                     }
                     else
                     {
@@ -556,9 +530,10 @@ static void vm_run(VM* vm)
                 uint8_t a = GET_A(instr);
                 uint8_t bx = GET_Bx(instr);
 
-                R[a].type = VAL_BOOLEAN;
+                //R[a].type = VAL_BOOLEAN;
                 Value val = R[bx];
-                R[a].b = (val.type == VAL_NAN || val.type == VAL_NIL || (val.type == VAL_BOOLEAN && val.b == false));
+                //R[a].b = (val.type == VAL_NAN || val.type == VAL_NIL || (val.type == VAL_BOOLEAN && val.b == false));
+                setboolean(R[a], isfalse(val));
 
                 break;
             }
@@ -569,26 +544,55 @@ static void vm_run(VM* vm)
                 uint8_t b = GET_B(instr);
                 uint8_t c = GET_C(instr);
 
-                if (R[b].type == R[c].type)
+                //if (R[b].type == R[c].type)
+                if (ttype(R[b]) == ttype(R[c]))
                 {
-                    if (R[b].type == VAL_BOOLEAN)
-                        R[a].b = R[b].b == R[c].b;
-                    else if (R[b].type == VAL_FLOAT)
-                        R[a].b = R[b].f == R[c].f;
-                    else if (R[b].type = VAL_INT)
-                        R[a].b = R[b].i == R[c].i;
-                    else if (R[b].type == VAL_STRING)
-                        R[a].b = (R[b].string.length == R[c].string.length && (strncmp(R[b].string.chars, R[c].string.chars, R[b].string.length) == 0));
-                    else if (R[b].type == VAL_NIL)
-                        R[a].b = true;
-                    else if (R[b].type == VAL_NAN)
-                        R[a].b = true;
+                    //if (R[b].type == VAL_BOOLEAN)
+                    if (isboolean(R[b]))
+                    {
+                        //R[a].b = R[b].b == R[c].b;
+                        setboolean(R[a], bvalue(R[b]) == bvalue(R[c]));
+                    }
+                    //else if (R[b].type == VAL_FLOAT)
+                    else if (isfloat(R[b]))
+                    {
+                        //R[a].b = R[b].f == R[c].f;
+                        setboolean(R[a], fvalue(R[b]) == fvalue(R[c]));
+                    }
+                    //else if (R[b].type == VAL_INT)
+                    else if (isint(R[b]))
+                    {
+                        //R[a].b = R[b].i == R[c].i;
+                        setboolean(R[a], ivalue(R[b]) == ivalue(R[c]));
+                    }
+                    //else if (R[b].type == VAL_STRING)
+                    else if (isstring(R[b]))
+                    {
+                        //R[a].b = (R[b].string.length == R[c].string.length && (strncmp(R[b].string.chars, R[c].string.chars, R[b].string.length) == 0));
+                        setboolean(R[a], (R[b].string.length == R[c].string.length && (strncmp(R[b].string.chars, R[c].string.chars, R[b].string.length) == 0)));
+                    }
+                    //else if (R[b].type == VAL_NIL)
+                    else if (isnil(R[b]))
+                    {
+                        //R[a].b = true;
+                        setboolean(R[a], true);
+                    }
+                    //else if (R[b].type == VAL_NAN)
+                    else if (ismnan(R[a]))
+                    {
+                        //R[a].b = true;
+                        setboolean(R[a], true);
+                    }
                     else
-                        printf("Error desconocido tipo %d\n", R[b].type);
+                    {
+                        //printf("Error desconocido tipo %d\n", R[b].type);
+                        unknownType(vm->name, chunk->lines[i], ttype(R[b]));
+                    }
                 }
                 else
                 {
-                    R[a].b = false;
+                    //R[a].b = false;
+                    setboolean(R[a], false);
                 }
 
                 break;
@@ -600,26 +604,53 @@ static void vm_run(VM* vm)
                 uint8_t b = GET_B(instr);
                 uint8_t c = GET_C(instr);
 
-                if (R[b].type == R[c].type)
+                //if (R[b].type == R[c].type)
+                if (ttype(R[b]) && ttype(R[c]))
                 {
-                    if (R[b].type == VAL_BOOLEAN)
-                        R[a].b = R[b].b != R[c].b;
-                    else if (R[b].type == VAL_FLOAT)
-                        R[a].b = R[b].f != R[c].f;
-                    else if (R[b].type = VAL_INT)
-                        R[a].b = R[b].i != R[c].i;
-                    else if (R[b].type == VAL_STRING)
-                        R[a].b = (R[b].string.length != R[c].string.length || !(strncmp(R[b].string.chars, R[c].string.chars, R[b].string.length) == 0));
-                    else if (R[b].type == VAL_NIL)
-                        R[a].b = false;
+                    //if (R[b].type == VAL_BOOLEAN)
+                    if (isboolean(R[b]))
+                    {
+                        //R[a].b = R[b].b != R[c].b;
+                        setboolean(R[a], bvalue(R[b]) != bvalue(R[c]));
+                    }
+                    //else if (R[b].type == VAL_FLOAT)
+                    else if (isfloat(R[b]))
+                    {
+                        //R[a].b = R[b].f != R[c].f;
+                        setboolean(R[a], fvalue(R[b]) != fvalue(R[c]));
+                    }
+                    //else if (R[b].type == VAL_INT)
+                    else if (isint(R[b]))
+                    {
+                        //R[a].b = R[b].i != R[c].i;
+                        setboolean(R[a], ivalue(R[b]) != ivalue(R[c]));
+                    }
+                    //else if (R[b].type == VAL_STRING)
+                    else if (isstring(R[b]))
+                    {
+                        //R[a].b = (R[b].string.length != R[c].string.length || !(strncmp(R[b].string.chars, R[c].string.chars, R[b].string.length) == 0));
+                        setboolean(R[a], (R[b].string.length != R[c].string.length || !(strncmp(R[b].string.chars, R[c].string.chars, R[b].string.length) == 0)));
+                    }
+                    //else if (R[b].type == VAL_NIL)
+                    else if (isnil(R[b]))
+                    {
+                        //R[a].b = false;
+                        setboolean(R[a], false);
+                    }
                     else if (R[b].type == VAL_NAN)
-                        R[a].b = false;
+                    {
+                        //R[a].b = false;
+                        setboolean(R[a], false);
+                    }
                     else
-                        printf("Error desconocido tipo %d\n", R[b].type);
+                    {
+                        unknownType(vm->name, chunk->lines[i], ttype(R[b]));
+                    }
                 }
                 else
                 {
-                    R[a].b = true;
+                    //R[a].b = true;
+                    setboolean(R[a], true);
                 }
 
                 break;
@@ -633,27 +664,45 @@ static void vm_run(VM* vm)
 
                 if (R[b].type == R[c].type)
                 {
-                    if (R[b].type == VAL_BOOLEAN)
+                    //if (R[b].type == VAL_BOOLEAN)
+                    if (isboolean(R[b]))
+                    {
                         //R[a].b = R[b].b == R[c].b;
-                        printf("Mejor error para LT BOOLEAN\n");
-                    else if (R[b].type == VAL_FLOAT)
-                        R[a].b = R[b].f < R[c].f;
-                    else if (R[b].type = VAL_INT)
-                        R[a].b = R[b].i < R[c].i;
-                    else if (R[b].type == VAL_STRING)
-                        R[a].b = (R[b].string.length < R[c].string.length);
-                    else if (R[b].type == VAL_NIL)
-                        //R[a].b = true;
-                        printf("Mejor error para LT nil\n");
-                    else if (R[b].type == VAL_NAN)
-                        //R[a].b = true;
-                        printf("Mejor error para LT NaN\n");
+                        invalidOperandsError(vm->name, chunk->lines[i], "<", "boolean", "boolean");
+                    }
+                    //else if (R[b].type == VAL_FLOAT)
+                    else if (isfloat(R[b]))
+                    {
+                        //R[a].b = R[b].f < R[c].f;
+                        setboolean(R[a], fvalue(R[b]) < fvalue(R[c]));
+                    }
+                    //else if (R[b].type = VAL_INT)
+                    else if (isint(R[b]))
+                    {
+                        //R[a].b = R[b].i < R[c].i;
+                        setboolean(R[a], ivalue(R[b]) < ivalue(R[c]));
+                    }
+                    //else if (R[b].type == VAL_STRING)
+                    else if (isstring(R[b]))
+                    {
+                        //R[a].b = (R[b].string.length < R[c].string.length);
+                        setboolean(R[a], slenvalue(R[b]) < slenvalue(R[c]));
+
+                    }
+                    //else if (R[b].type == VAL_NIL)
+                    else if (isnil(R[b]))
+                        invalidOperandsError(vm->name, chunk->lines[i], "<", "nil", "nil");
+                    //else if (R[b].type == VAL_NAN)
+                    else if (ismnan(R[b]))
+                        invalidOperandsError(vm->name, chunk->lines[i], "<", "NaN", "NaN");
                     else
-                        printf("Error desconocido tipo %d\n", R[b].type);
+                        unknownType(vm->name, chunk->lines[i], ttype(R[b]));
                 }
                 else
                 {
-                    R[a].b = false;
+                    const char* type1 = getValueTypeName(R[b]);
+                    const char* type2 = getValueTypeName(R[c]);
+                    invalidOperandsError(vm->name, chunk->lines[i], "<", type1, type2);
                 }
 
                 break;
@@ -665,29 +714,44 @@ static void vm_run(VM* vm)
                 uint8_t b = GET_B(instr);
                 uint8_t c = GET_C(instr);
 
-                if (R[b].type == R[c].type)
+                //if (R[b].type == R[c].type)
+                if (ttype(R[b]) == ttype(R[c]))
                 {
-                    if (R[b].type == VAL_BOOLEAN)
-                        //R[a].b = R[b].b == R[c].b;
-                        printf("Mejor error para LTE BOOLEAN\n");
-                    else if (R[b].type == VAL_FLOAT)
-                        R[a].b = R[b].f <= R[c].f;
-                    else if (R[b].type = VAL_INT)
-                        R[a].b = R[b].i <= R[c].i;
-                    else if (R[b].type == VAL_STRING)
-                        R[a].b = (R[b].string.length <= R[c].string.length);
-                    else if (R[b].type == VAL_NIL)
-                        //R[a].b = true;
-                        printf("Mejor error para LTE nil\n");
-                    else if (R[b].type == VAL_NAN)
-                        //R[a].b = true;
-                        printf("Mejor error para LTE NaN\n");
+                    //if (R[b].type == VAL_BOOLEAN)
+                    if (isboolean(R[b]))
+                        invalidOperandsError(vm->name, chunk->lines[i], "<=", "boolean", "boolean");
+                    //else if (R[b].type == VAL_FLOAT)
+                    else if (isfloat(R[b]))
+                    {
+                        //R[a].b = R[b].f <= R[c].f;
+                        setboolean(R[a], fvalue(R[b]) <= fvalue(R[c]));
+                    }
+                    //else if (R[b].type = VAL_INT)
+                    else if (isint(R[b]))
+                    {
+                        //R[a].b = R[b].i <= R[c].i;
+                        setboolean(R[a], ivalue(R[b]) <= ivalue(R[c]));
+                    }
+                    //else if (R[b].type == VAL_STRING)
+                    else if (isstring(R[b]))
+                    {
+                        //R[a].b = (R[b].string.length <= R[c].string.length);
+                        setboolean(R[a], slenvalue(R[b]) <= slenvalue(R[c]));
+                    }
+                    //else if (R[b].type == VAL_NIL)
+                    else if (isnil(R[b]))
+                        invalidOperandsError(vm->name, chunk->lines[i], "<=", "nil", "nil");
+                    //else if (R[b].type == VAL_NAN)
+                    else if (ismnan(R[b]))
+                        invalidOperandsError(vm->name, chunk->lines[i], "<=", "NaN", "NaN");
                     else
-                        printf("Error desconocido tipo %d\n", R[b].type);
+                        unknownType(vm->name, chunk->lines[i], ttype(R[b]));
                 }
                 else
                 {
-                    R[a].b = false;
+                    const char* type1 = getValueTypeName(R[b]);
+                    const char* type2 = getValueTypeName(R[c]);
+                    invalidOperandsError(vm->name, chunk->lines[i], "<=", type1, type2);
                 }
 
                 break;
@@ -699,29 +763,44 @@ static void vm_run(VM* vm)
                 uint8_t b = GET_B(instr);
                 uint8_t c = GET_C(instr);
 
-                if (R[b].type == R[c].type)
+                //if (R[b].type == R[c].type)
+                if (ttype(R[b]) == ttype(R[c]))
                 {
-                    if (R[b].type == VAL_BOOLEAN)
-                        //R[a].b = R[b].b == R[c].b;
-                        printf("Mejor error para GT BOOLEAN\n");
-                    else if (R[b].type == VAL_FLOAT)
-                        R[a].b = R[b].f > R[c].f;
-                    else if (R[b].type = VAL_INT)
-                        R[a].b = R[b].i > R[c].i;
-                    else if (R[b].type == VAL_STRING)
-                        R[a].b = (R[b].string.length > R[c].string.length);
-                    else if (R[b].type == VAL_NIL)
-                        //R[a].b = true;
-                        printf("Mejor error para GT nil\n");
-                    else if (R[b].type == VAL_NAN)
-                        //R[a].b = true;
-                        printf("Mejor error para GT NaN\n");
+                    //if (R[b].type == VAL_BOOLEAN)
+                    if (isboolean(R[b]))
+                        invalidOperandsError(vm->name, chunk->lines[i], ">", "boolean", "boolean");
+                    //else if (R[b].type == VAL_FLOAT)
+                    else if (isfloat(R[b]))
+                    {
+                        //R[a].b = R[b].f > R[c].f;
+                        setboolean(R[a], fvalue(R[b]) > fvalue(R[c]));
+                    }
+                    //else if (R[b].type = VAL_INT)
+                    else if (isint(R[b]))
+                    {
+                        //R[a].b = R[b].i > R[c].i;
+                        setboolean(R[a], ivalue(R[b]) > ivalue(R[c]));
+                    }
+                    //else if (R[b].type == VAL_STRING)
+                    else if (isstring(R[b]))
+                    {
+                        //R[a].b = (R[b].string.length > R[c].string.length);
+                        setboolean(R[a], slenvalue(R[b]) > slenvalue(R[c]));
+                    }
+                    //else if (R[b].type == VAL_NIL)
+                    else if (isnil(R[b]))
+                        invalidOperandsError(vm->name, chunk->lines[i], ">", "nil", "nil");
+                    //else if (R[b].type == VAL_NAN)
+                    else if (ismnan(R[b]))
+                        invalidOperandsError(vm->name, chunk->lines[i], ">", "NaN", "NaN");
                     else
-                        printf("Error desconocido tipo %d\n", R[b].type);
+                        unknownType(vm->name, chunk->lines[i], ttype(R[b]));
                 }
                 else
                 {
-                    R[a].b = false;
+                    const char* type1 = getValueTypeName(R[b]);
+                    const char* type2 = getValueTypeName(R[c]);
+                    invalidOperandsError(vm->name, chunk->lines[i], ">", type1, type2);
                 }
 
                 break;
@@ -733,29 +812,44 @@ static void vm_run(VM* vm)
                 uint8_t b = GET_B(instr);
                 uint8_t c = GET_C(instr);
 
-                if (R[b].type == R[c].type)
+                //if (R[b].type == R[c].type)
+                if (ttype(R[b]) == ttype(R[c]))
                 {
-                    if (R[b].type == VAL_BOOLEAN)
-                        //R[a].b = R[b].b == R[c].b;
-                        printf("Mejor error para GTE BOOLEAN\n");
-                    else if (R[b].type == VAL_FLOAT)
-                        R[a].b = R[b].f >= R[c].f;
-                    else if (R[b].type = VAL_INT)
-                        R[a].b = R[b].i >= R[c].i;
-                    else if (R[b].type == VAL_STRING)
-                        R[a].b = (R[b].string.length >= R[c].string.length);
-                    else if (R[b].type == VAL_NIL)
-                        //R[a].b = true;
-                        printf("Mejor error para GTE nil\n");
-                    else if (R[b].type == VAL_NAN)
-                        //R[a].b = true;
-                        printf("Mejor error para GTE NaN\n");
+                    //if (R[b].type == VAL_BOOLEAN)
+                    if (isboolean(R[b]))
+                        invalidOperandsError(vm->name, chunk->lines[i], ">=", "boolean", "boolean");
+                    //else if (R[b].type == VAL_FLOAT)
+                    else if (isfloat(R[b]))
+                    {
+                        //R[a].b = R[b].f >= R[c].f;
+                        setboolean(R[a], fvalue(R[b]) >= fvalue(R[c]));
+                    }
+                    //else if (R[b].type = VAL_INT)
+                    else if (isint(R[b]))
+                    {
+                        //R[a].b = R[b].i >= R[c].i;
+                        setboolean(R[a], ivalue(R[b]) >= ivalue(R[c]));
+                    }
+                    //else if (R[b].type == VAL_STRING)
+                    else if (isstring(R[b]))
+                    {
+                        //R[a].b = (R[b].string.length >= R[c].string.length);
+                        setboolean(R[a], slenvalue(R[b]) >= slenvalue(R[c]));
+                    }
+                    //else if (R[b].type == VAL_NIL)
+                    else if (isnil(R[b]))
+                        invalidOperandsError(vm->name, chunk->lines[i], ">=", "nil", "nil");
+                    //else if (R[b].type == VAL_NAN)
+                    else if (ismnan(R[b]))
+                        invalidOperandsError(vm->name, chunk->lines[i], ">=", "NaN", "NaN");
                     else
-                        printf("Error desconocido tipo %d\n", R[b].type);
+                        unknownType(vm->name, chunk->lines[i], ttype(R[b]));
                 }
                 else
                 {
-                    R[a].b = false;
+                    const char* type1 = getValueTypeName(R[b]);
+                    const char* type2 = getValueTypeName(R[c]);
+                    invalidOperandsError(vm->name, chunk->lines[i], ">=", type1, type2);
                 }
 
                 break;
@@ -775,7 +869,8 @@ static void vm_run(VM* vm)
                 uint8_t a = GET_A(instr);
                 uint16_t bx = GET_Bx(instr);
 
-                if (R[a].type == VAL_NAN || R[a].type == VAL_NIL || (R[a].type == VAL_BOOLEAN && R[a].b == false))
+                //if (R[a].type == VAL_NAN || R[a].type == VAL_NIL || (R[a].type == VAL_BOOLEAN && R[a].b == false))
+                if (isfalse(R[a]))
                     pc += bx;
 
                 break;
@@ -788,18 +883,9 @@ static void vm_run(VM* vm)
 
             default:
             {
-                printf("Mejor error para op desconocido, op = %d\n", op);
-                exit(1);
+                unknownType(vm->name, chunk->lines[i], op);
             }
-        }
-
-        //printf("====================\n");
-        //printf("i = %" PRIu32 "\n", *i);
-        //printf("op = %d\n", GET_OPCODE(*i));
-        //printf("a = %d\n", GET_A(*i));
-        //printf("b = %d\n", GET_B(*i));
-        //printf("c = %d\n", GET_C(*i));
-        
+        }        
     }
 }
 

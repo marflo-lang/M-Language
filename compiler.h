@@ -1,5 +1,7 @@
 #pragma once
 #include "ast.h"
+#include "mobjects.h"
+
 #include <stdint.h>
 #include <stdbool.h>
 
@@ -57,33 +59,33 @@ typedef struct
     int capacity;
 } IRList;
 
-typedef enum
-{
-    VAL_NAN,
-    VAL_NIL,
-    VAL_INT,
-    VAL_FLOAT,
-    VAL_STRING,
-    VAL_BOOLEAN
-} CValueType;
-
-typedef struct
-{
-    CValueType type;
-
-    union
-    {
-        int i;
-        double f;
-        bool b;
-
-        struct
-        {
-            const char* chars;
-            int length;
-        } string;
-    };
-} Value;
+//typedef enum
+//{
+//    VAL_NAN,
+//    VAL_NIL,
+//    VAL_INT,
+//    VAL_FLOAT,
+//    VAL_STRING,
+//    VAL_BOOLEAN
+//} CValueType;
+//
+//typedef struct
+//{
+//    CValueType type;
+//
+//    union
+//    {
+//        int i;
+//        double f;
+//        bool b;
+//
+//        struct
+//        {
+//            const char* chars;
+//            int length;
+//        } string;
+//    };
+//} Value;
 
 typedef struct
 {
