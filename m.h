@@ -8,6 +8,7 @@
 #define PARSER_DEBUG    1
 #define AST_DETALLADO   1
 #define COMPILER_DEBUG  1
+#define CODEGEN_DEBUG   1
 
 /* basic types */
 typedef enum /*ValueType*/

@@ -294,6 +294,11 @@ int main(void)
         CodeGen* G = generator_init(s->src, config.script_path, &C->ir, &C->constants);
         //printf("enter bytecode\n");
         Chunk* mainChunk = generate_bydecode(G);
+
+#if (defined(DEBUG) && DEBUG == 1) && (defined(CODEGEN_DEBUG) && CODEGEN_DEBUG == 1)
+        codegen_print(G);
+#endif 
+
         clock_t endCompile = clock();
         printf("The time it took to compile the program is %f seconds\n", (double)(endCompile - startCompile) / CLOCKS_PER_SEC);
         

@@ -178,8 +178,7 @@ Chunk* generate_bydecode(CodeGen* G)
 
             case IR_JUMP:
             {
-                int offset = ir->b - i;
-                printf("offset = %d\n", offset);
+                int offset = ir->b - i - 1;
                 emit(G, CREATE_ABx(OP_JUMP, ir->a, offset), loc);
                 
                 break;
@@ -187,8 +186,7 @@ Chunk* generate_bydecode(CodeGen* G)
 
             case IR_JUMP_IF_FALSE:
             {
-                int offset = ir->b - i;
-                printf("offset = %d\n", offset);
+                int offset = ir->b - i - 1;
                 emit(G, CREATE_ABx(OP_JUMP_IF_FALSE, ir->a, offset), loc);
                 
                 break;
@@ -213,3 +211,97 @@ Chunk* generate_bydecode(CodeGen* G)
     return G->chunk;
 }
 
+#if (defined(DEBUG) && DEBUG == 1) && (defined(CODEGEN_DEBUG) && CODEGEN_DEBUG == 1)
+
+static void print_bytecode(CodeGen* G, int i)
+{
+    Chunk* chunk = G->chunk;
+    //Instruction* instr = chunk->instructions;
+    Instruction inst = chunk->instructions[i];
+    uint8_t op = GET_OPCODE(inst);
+    printf("L%d - ", i);
+    printf("%d: ", chunk->lines[i]);
+    if (op == OP_LOADK)
+    {
+        Value v = chunk->constants[GET_Bx(inst)];
+        printf("LOADK R%d K%d", GET_A(inst), GET_Bx(inst));
+        if (v.type == VAL_INT)
+            printf(" [%d]", v.i);
+        else if (v.type == VAL_FLOAT)
+            printf(" [%f]", v.f);
+        else if (v.type == VAL_BOOLEAN)
+            printf(" [%s]", v.b == true ? "true" : "false");
+        else if (v.type == VAL_NAN)
+            printf(" [NaN]");
+        else if (v.type == VAL_NIL)
+            printf(" [nil]");
+        else if (v.type == VAL_STRING)
+            printf(" ['%.*s']", v.string.length, v.string.chars);
+
+    }
+    else if (op == OP_LOAD_VAR)
+        printf("LOADV R%d S%d", GET_A(inst), GET_Bx(inst));
+    else if (op == OP_STORE_VAR)
+        printf("STORE S%d R%d", GET_A(inst), GET_Bx(inst));
+    else if (op == OP_MOVE)
+        printf("MOVE R%d R%d", GET_A(inst), GET_Bx(inst));
+    else if (op == OP_ADD)
+        printf("ADD R%d R%d R%d", GET_A(inst), GET_B(inst), GET_C(inst));
+    else if (op == OP_SUB)
+        printf("SUB R%d R%d R%d", GET_A(inst), GET_B(inst), GET_C(inst));
+    else if (op == OP_MUL)
+        printf("MUL R%d R%d R%d", GET_A(inst), GET_B(inst), GET_C(inst));
+    else if (op == OP_DIV)
+        printf("DIV R%d R%d R%d", GET_A(inst), GET_B(inst), GET_C(inst));
+    else if (op == OP_IDIV)
+        printf("IDIV R%d R%d R%d", GET_A(inst), GET_B(inst), GET_C(inst));
+    else if (op == OP_MOD)
+        printf("MOD R%d R%d R%d", GET_A(inst), GET_B(inst), GET_C(inst));
+    else if (op == OP_POW)
+        printf("POW R%d R%d R%d", GET_A(inst), GET_B(inst), GET_C(inst));
+    else if (op == OP_CONCAT)
+        printf("CONCAT R%d R%d R%d", GET_A(inst), GET_B(inst), GET_C(inst));
+    else if (op == OP_UNM)
+        printf("UNM R%d R%d", GET_A(inst), GET_Bx(inst));
+    else if (op == OP_NOT)
+        printf("NOT R%d R%d", GET_A(inst), GET_Bx(inst));
+    else if (op == OP_EQ)
+        printf("EQ R%d R%d R%d", GET_A(inst), GET_B(inst), GET_C(inst));
+    else if (op == OP_NEQ)
+        printf("NEQ R%d R%d R%d", GET_A(inst), GET_B(inst), GET_C(inst));
+    else if (op == OP_LT)
+        printf("LT R%d R%d R%d", GET_A(inst), GET_B(inst), GET_C(inst));
+    else if (op == OP_LTE)
+        printf("LTE R%d R%d R%d", GET_A(inst), GET_B(inst), GET_C(inst));
+    else if (op == OP_GT)
+        printf("GT R%d R%d R%d", GET_A(inst), GET_B(inst), GET_C(inst));
+    else if (op == OP_GTE)
+        printf("GTE R%d R%d R%d", GET_A(inst), GET_B(inst), GET_C(inst));
+    else if (op == OP_JUMP)
+        printf("JUMP %d", GET_Bx(inst));
+    else if (op == OP_JUMP_IF_FALSE)
+        printf("JUMPIFFALSE R%d %d", GET_A(inst), GET_Bx(inst));
+    else if (op == OP_HALT)
+        printf("HALT");
+    else
+        printf("Invalid op '%d'", op);
+    printf("\n");
+
+}
+
+void codegen_print(CodeGen* G)
+{
+    printf("===== CODE GENERATOR DEBUG =====\n");
+    printf("----- Bytecode -----\n");
+    int i = 0;
+    for (i = 0; GET_OPCODE(G->chunk->instructions[i]) != OP_HALT; i++)
+    {
+        print_bytecode(G, i);
+    }
+
+    print_bytecode(G, i);
+    printf("===== END CODE GENERATOR DEBUG =====\n");
+
+}
+
+#endif 

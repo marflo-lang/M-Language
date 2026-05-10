@@ -65,3 +65,7 @@ typedef struct
 CodeGen* generator_init(const char* src, const char* name, IRList* ir, ConstTable* T);
 Chunk* generate_bydecode(CodeGen* G);
 
+#if (defined(DEBUG) && DEBUG == 1) && (defined(CODEGEN_DEBUG) && CODEGEN_DEBUG == 1)
+void codegen_print(CodeGen* G);
+#endif 
+
