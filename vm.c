@@ -98,13 +98,12 @@ static void vm_run(VM* vm)
                 if (isint(R[b]) && isint(R[c]))
                 {
                     setint(R[a], ivalue(R[b]) + ivalue(R[c]));
-                    printf("ADD %i\n", R[a].i);
+                    //printf("ADD %i\n", R[a].i);
                 }
                 else if (isfloat(R[b]) && isfloat(R[c]))
                 {
                     setfloat(R[a], fvalue(R[b]) + fvalue(R[c]));
-                    printf("ADD %f\n", R[a].f);
-
+                    //printf("ADD %f\n", R[a].f);
                 }
                 else
                 {
@@ -113,7 +112,7 @@ static void vm_run(VM* vm)
                     if (can_coerce_to_float(R[b], &num_b) && can_coerce_to_float(R[c], &num_c))
                     {
                         setfloat(R[a], num_b + num_c);
-                        printf("ADD %f\n", R[a].f);
+                        //printf("ADD %f\n", R[a].f);
                     }
                     else
                     {
@@ -760,9 +759,9 @@ static void vm_run(VM* vm)
 
             case OP_JUMP:
             {
-                uint16_t bx = GET_Bx(instr);
-                printf("ENTRO\n");
-                printf("JUMP Bx = %d\n", bx);
+                int16_t bx = GET_sBx(instr);
+                //printf("ENTRO\n");
+                //printf("JUMP Bx = %d\n", bx);
                 pc += bx;
                 i += bx;
 
@@ -773,8 +772,8 @@ static void vm_run(VM* vm)
             {
                 uint8_t a = GET_A(instr);
                 uint16_t bx = GET_Bx(instr);
-                printf("ENTRO\n");
-                printf("JUMP IF FALSE Bx = %d\n", bx);
+                //printf("ENTRO\n");
+                //printf("JUMP IF FALSE Bx = %d\n", bx);
                 if (isfalse(R[a]))
                 {
                     pc += bx;

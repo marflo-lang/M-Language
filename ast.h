@@ -97,7 +97,8 @@ typedef enum
 {
     STMT_IF,
     STMT_VAR,
-    //STMT_CONST,
+    STMT_WHILE,
+    STMT_FOR_NUMERIC,
     STMT_EXPR,
     STMT_ASSING,
     STMT_BLOCK,
@@ -170,6 +171,25 @@ typedef struct
 
     Stmt* elseBranch;
 } StmtIf;
+
+typedef struct
+{
+    Stmt stmt;
+
+    Expr* condition;
+    Stmt* loopBranch;
+} StmtWhile;
+
+typedef struct
+{
+    Stmt stmt;
+
+    Stmt* from;
+    Expr* to;
+    Stmt* step;
+
+    Stmt* loopBranch;
+} StmtForNumeric;
 
 typedef struct
 {

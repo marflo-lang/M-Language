@@ -276,7 +276,7 @@ int main(void)
 #if (defined(DEBUG) && DEBUG == 1) && (defined(PARSER_DEBUG) && PARSER_DEBUG == 1)
         parser_print(P, stmt);
 #endif
-
+        
         /*
         ========== Compiler ==========
         */

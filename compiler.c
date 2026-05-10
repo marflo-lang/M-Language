@@ -478,7 +478,7 @@ int compiler_expr(Compiler* C, Expr* expr)
             //ir_emit(&C->ir, IR_LOAD_VAR, old, reg, 0, fix->target->base.location);
 
             int one = alloc_reg(C);
-            Value v = make_int(atoi("1"));
+            Value v = make_int(1);
             int k = const_add(&C->constants, v);
             ir_emit(&C->ir, IR_LOAD_CONST, one, k, 0, fix->op.location); // Pendiente revisar comportamiento
 
@@ -589,6 +589,34 @@ void compiler_stmt(Compiler* C, Stmt* stmt)
             return;
         }
 
+        case STMT_WHILE:
+        {
+            StmtWhile* whileStmt = (StmtWhile*) stmt;
+
+            int current = ir_current(&C->ir);
+
+            int cond = compiler_expr(C, whileStmt->condition);
+
+            int jump_if_false = ir_emit_jump(&C->ir, IR_JUMP_IF_FALSE, cond, whileStmt->condition->base.location);
+
+            compiler_stmt(C, whileStmt->loopBranch);
+
+            ir_emit(&C->ir, IR_JUMP, 0, current, 0, whileStmt->loopBranch->base.location);
+
+            int nextR = ir_current(&C->ir);
+
+            ir_patch(&C->ir, jump_if_false, nextR);
+
+            return;
+
+        }
+
+        case STMT_FOR_NUMERIC:
+        {
+
+            break;
+        }
+
         case STMT_EXPR:
         {
             compiler_expr(C, stmt);
@@ -646,7 +674,7 @@ void compiler_stmt(Compiler* C, Stmt* stmt)
 
             int target = symbol->reg;
 
-            int r = alloc_reg(C);
+            //int r = alloc_reg(C);
 
             IROpCode op;
 
@@ -663,10 +691,10 @@ void compiler_stmt(Compiler* C, Stmt* stmt)
             default: op = IR_ADD; break; // temporal
             }
             //ir_emit(&C->ir, IR_LOAD_VAR, r1, target, 0);
-            ir_emit(&C->ir, op, r, target, value, compound->value->base.location);
+            ir_emit(&C->ir, op, target, target, value, compound->value->base.location);
             
-            if (target != r)
-                ir_emit(&C->ir, IR_MOVE, target, r, 0, compound->stmt.base.location);
+            //if (target != r)
+                //ir_emit(&C->ir, IR_MOVE, target, r, 0, compound->stmt.base.location);
             //ir_emit(&C->ir, IR_STORE_VAR, reg, r, 0, compound->stmt.base.location);
 
             return;

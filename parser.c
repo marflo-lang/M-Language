@@ -39,6 +39,8 @@ static Stmt* parser_if(Parser* P);
 static Stmt* parser_block(Parser* P);
 static Stmt* parser_expr_or_assignment_stmt(Parser* P);
 static Stmt* parser_assign(Parser* P, Expr* left);
+static Stmt* parser_while(Parser* P);
+static Stmt* parser_for_numeric(Parser* P);
 static Stmt* parser_stmt_error(Parser* P, Expr* expr);
 //static Stmt* parser_multi_assign(Parser* P, Expr* first);
 
@@ -520,6 +522,8 @@ static Stmt* parser_statement(Parser* P)
     if (match(P, M_CONST)) return parser_var(P, true);
     if (match(P, M_IF)) return parser_if(P);
     if (match(P, M_LBRACE)) return parser_block(P);
+    if (match(P, M_WHILE)) return parser_while(P);
+    if (match(P, M_FOR)) return parser_for_numeric(P);
     if (match(P, M_SHORT_COMMENT)) return parser_statement(P);
     if (match(P, M_LONG_COMMENT_START)) return parser_statement(P);
 
@@ -759,6 +763,57 @@ static Stmt* parser_if(Parser* P)
     stmt->ifBranch = ifBranch;
     stmt->elseBranch = elseBranch;
 
+    return (Stmt*) stmt;
+}
+
+static Stmt* parser_while(Parser* P)
+{
+    Position begin = P->previous.location.begin;
+    Expr* condition = parser_expression(P);
+    Stmt* loopBranch = parser_statement(P);
+
+    StmtWhile* stmt = arena_allocator(P->arena, sizeof(StmtWhile));
+
+    stmt->stmt.base.ttype = NODE_STMT;
+    stmt->stmt.base.location = locationCPos(begin, loopBranch->base.location.end);
+    stmt->stmt.stmt_type = STMT_WHILE;
+    stmt->condition = condition;
+    stmt->loopBranch = loopBranch;
+
+    return (Stmt*) stmt;
+}
+
+static Stmt* parser_for_numeric(Parser* P)
+{
+    Position begin = P->previous.location.begin;
+
+    Stmt* from = parser_statement(P);
+    if (P->current.type == M_COMMA)
+        advance(P);
+    else if (P->current.type == M_SEMICOLON)
+        advance(P);
+    else
+        consume(P, M_COMMA, ", after from statement");
+    Expr* to = parser_expression(P);
+    Stmt* step = NULL;
+    if (P->current.type == M_COMMA || P->current.type == M_SEMICOLON)
+    {
+        advance(P);
+        step = parser_statement(P);
+    }
+
+    Stmt* loopBranch = parser_statement(P);
+
+    StmtForNumeric* stmt = arena_allocator(P->arena, sizeof(StmtForNumeric));
+
+    stmt->stmt.base.location = locationCPos(begin, loopBranch->base.location.end);
+    stmt->stmt.base.ttype = NODE_STMT;
+    stmt->stmt.stmt_type = STMT_FOR_NUMERIC;
+    stmt->to = to;
+    stmt->from = from;
+    stmt->step = step;
+    stmt->loopBranch = loopBranch;
+    
     return (Stmt*) stmt;
 }
 
@@ -1117,6 +1172,50 @@ static void print_stmt(Parser* P, Stmt* stmt, const char* prefix, bool isLast)
                 build_prefix(falseBlockPrefix, elseBranchPrefix, true);
                 print_stmt(P, ifnode->elseBranch, falseBlockPrefix, true);
             }
+            break;
+        }
+        case STMT_WHILE:
+        {
+            StmtWhile* whileNode = (StmtWhile*) stmt;
+            printf("While\n");
+            char conditionPrefix[256];
+            build_prefix(conditionPrefix, prefix, isLast);
+            print_branch(conditionPrefix, false);
+            printf("condition\n");
+            char exprPrefix[256];
+            build_prefix(exprPrefix, conditionPrefix, false);
+            print_expr(P, whileNode->condition, exprPrefix, true);
+            char whilePrefix[256];
+            build_prefix(whilePrefix, prefix, isLast);
+            print_branch(whilePrefix, true);
+            printf("Loop Branch:\n");
+            char loopPrefix[256];
+            build_prefix(loopPrefix, whilePrefix, true);
+            print_stmt(P, whileNode->loopBranch, loopPrefix, true);
+            break;
+        }
+        case STMT_FOR_NUMERIC:
+        {
+            StmtForNumeric* forNumeric = (StmtForNumeric*) stmt;
+
+            printf("For Numeric\n");
+            char mainPrefix[256];
+            build_prefix(mainPrefix, prefix, isLast);
+            print_branch(mainPrefix, false);
+            printf("From\n");
+            char inPrefix[256];
+            build_prefix(inPrefix, prefix, isLast);
+            print_branch(inPrefix, false);
+            print_stmt(P, forNumeric->from, inPrefix, true);
+            print_branch(mainPrefix, false);
+            printf("To\n");
+            print_expr(P, forNumeric->to, inPrefix, true);
+            print_branch(mainPrefix, false);
+            printf("Step\n");
+            print_stmt(P, forNumeric->step, inPrefix, true);
+            print_branch(mainPrefix, true);
+            printf("Loop Branch\n");
+            print_stmt(P, forNumeric->loopBranch, inPrefix, true);
             break;
         }
         case STMT_EXPR:

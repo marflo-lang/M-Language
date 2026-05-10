@@ -1,10 +1,9 @@
 
-var a = false
+var a = 0
 
-if a {
-    a = false
-}
-else
-{
-    a = true
-}
+/*for var i = 0; i < 10; i += 1 {
+    a += 1
+}*/
+
+while a < 1000000 a += 1
+

@@ -312,6 +312,12 @@ static LTokenType identifierType(Lexer* L, int start, int length)
         case 'f':
             if (length == 5 && memcmp(text, "false", 5) == 0)
                 return M_V_FALSE;
+            else if (length == 3 && memcmp(text, "for", 3) == 0)
+                return M_FOR;
+            break;
+        case 'w':
+            if (length == 5 && memcmp(text, "while", 5) == 0)
+                return M_WHILE;
             break;
     }
 

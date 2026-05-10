@@ -41,6 +41,8 @@ typedef enum
     // KEYWORDS
     M_VAR,
     M_CONST,
+    M_WHILE,
+    M_FOR,
     M_IF,
     M_ELSEIF,
     M_ELSE,

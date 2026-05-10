@@ -179,7 +179,7 @@ Chunk* generate_bydecode(CodeGen* G)
             case IR_JUMP:
             {
                 int offset = ir->b - i - 1;
-                emit(G, CREATE_ABx(OP_JUMP, ir->a, offset), loc);
+                emit(G, CREATE_AsBx(OP_JUMP, ir->a, offset), loc);
                 
                 break;
             }
@@ -278,7 +278,7 @@ static void print_bytecode(CodeGen* G, int i)
     else if (op == OP_GTE)
         printf("GTE R%d R%d R%d", GET_A(inst), GET_B(inst), GET_C(inst));
     else if (op == OP_JUMP)
-        printf("JUMP %d", GET_Bx(inst));
+        printf("JUMP %d", GET_sBx(inst));
     else if (op == OP_JUMP_IF_FALSE)
         printf("JUMPIFFALSE R%d %d", GET_A(inst), GET_Bx(inst));
     else if (op == OP_HALT)
