@@ -928,7 +928,9 @@ static Stmt* parser_program(Parser* P)
 
     if (stmtCount > 0)
     {
-        block->stmt.base.location = locationCPos(stmts[0]->base.location.begin, stmts[stmtCount - 1]->base.location.end);
+        //block->stmt.base.location = locationCPos(stmts[0]->base.location.begin, stmts[stmtCount - 1]->base.location.end);
+        assert(P->Tokens->data[P->count - 1].type == M_EOF);
+        block->stmt.base.location = locationCPos(stmts[0]->base.location.begin, P->Tokens->data[P->count - 1].location.end);
     }
     else
     {

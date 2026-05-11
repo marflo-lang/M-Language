@@ -83,6 +83,8 @@ static void vm_run(VM* vm)
                 uint8_t a = GET_A(instr);
                 uint16_t bx = GET_Bx(instr);
                 
+                //printf("MOVE %d %d\n", a, bx);
+
                 R[a].type = R[bx].type;
                 R[a] = R[bx];
                 break;
@@ -136,7 +138,7 @@ static void vm_run(VM* vm)
                 // fast-path
                 if (isint(R[b]) && isint(R[c]))
                 {
-                    setint(R[a], ivalue(R[b]) + ivalue(R[c]));
+                    setint(R[a], ivalue(R[b]) - ivalue(R[c]));
                 }
                 else if (isfloat(R[b]) && isfloat(R[c]))
                 {
@@ -173,6 +175,7 @@ static void vm_run(VM* vm)
                 if (isint(R[b]) && isint(R[c]))
                 {
                     setint(R[a], ivalue(R[b]) * ivalue(R[c]));
+                    //printf("MUL %d %d %d\n", ivalue(R[a]), ivalue(R[b]), ivalue(R[c]));
                 }
                 else if (isfloat(R[b]) && isfloat(R[c]))
                 {

@@ -136,7 +136,7 @@ void symbols_init(SymbolTable* T);
 void constants_init(ConstTable* c);
 void locations_init(LocationInstructions* l);
 Compiler* compiler_init(const char* src, const char* name);
-int compiler_expr(Compiler* C, Expr* expr);
+int compiler_expr(Compiler* C, Expr* expr, int target);
 void compiler_stmt(Compiler* C, Stmt* stmt);
 void compiler_program(Compiler* C, Stmt* stmt);
 

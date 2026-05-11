@@ -160,7 +160,6 @@ static Value token_to_value(Compiler* C, Token t)
             memcpy(buffer, C->src + t.location.begin.offset, length);
             buffer[length] = '\0';
             
-            //printf("===========buffer = '%f'=============\n", atof(buffer));
             return make_float(atof(buffer));
         }
         case M_V_STRING:
@@ -244,16 +243,15 @@ static int alloc_reg(Compiler* C)
     return C->next_reg++;
 }
 
+static void free_reg(Compiler* C)
+{
+    C->next_reg--;
+}
+
 static int symbol_define(Compiler* C, SymbolTable* T, Token name, bool isConst, const char* src)
 {
     //int slot = T->count;
     int reg = alloc_reg(C);
-
-    //for (int i = 0; i < T->count; i++)
-    //{
-    //    if (compare_tokens(T->names[i], name, src))
-    //        return i;
-    //}
 
     if (T->count >= T->capacity)
     {
@@ -275,7 +273,8 @@ static int symbol_define(Compiler* C, SymbolTable* T, Token name, bool isConst, 
 
 static Symbol* symbols_resolve(SymbolTable* T, Token name, const char* src)
 {
-    for (int i = 0; i < T->count; i++)
+    //for (int i = 0; i < T->count; i++)
+    for (int i = T->count - 1; i >= 0; i--)
     {
         if (compare_tokens(T->data[i].name, name, src))
         {
@@ -356,14 +355,15 @@ void locations_init(LocationInstructions* l)
     l->capacity = 0;
 }
 
-int compiler_expr(Compiler* C, Expr* expr)
+int compiler_expr(Compiler* C, Expr* expr, int target)
 {
     switch (expr->expr_type)
     {
         case EXPR_LITERAL:
         {
             LiteralExpr* literal = (LiteralExpr*) expr;
-            int r = alloc_reg(C);
+            //int r = alloc_reg(C);
+            int r = (target > -1) ? target : alloc_reg(C);
 
             Value v = token_to_value(C, literal->value);
 
@@ -381,20 +381,23 @@ int compiler_expr(Compiler* C, Expr* expr)
             if (symbol == NULL)
                 compilerError("Variable '%.*s' has not yet been declared. Consider declaring it before using it", C->name, nameE->expr.base.location, nameE->name.length, &C->src[nameE->name.location.begin.offset]);
 
-            //int reg = symbol->reg;
+            if (target > -1)
+            {
+                ir_emit(&C->ir, IR_MOVE, target, symbol->reg, 0, nameE->expr.base.location);
+                return target;
+            }
 
-            //int r = alloc_reg(C);
-            //ir_emit(&C->ir, IR_MOVE, r, reg, 0, nameE->expr.base.location);
             return symbol->reg;
         }
         case EXPR_BINARY:
         {
             BinaryExpr* binary = (BinaryExpr*) expr;
 
-            int left = compiler_expr(C, binary->left);
-            int right = compiler_expr(C, binary->right);
+            int left = compiler_expr(C, binary->left, -1);
+            int right = compiler_expr(C, binary->right, -1);
 
-            int r = alloc_reg(C);
+            //int r = alloc_reg(C);
+            int r = (target > -1) ? target : alloc_reg(C);
 
             IROpCode op;
 
@@ -424,8 +427,9 @@ int compiler_expr(Compiler* C, Expr* expr)
         {
             UnaryExpr* unary = (UnaryExpr*) expr;
 
-            int right = compiler_expr(C, unary->right);
-            int r = alloc_reg(C);
+            int right = compiler_expr(C, unary->right, -1);
+            //int r = alloc_reg(C);
+            int r = (target > -1) ? target : alloc_reg(C);
 
             IROpCode op;
 
@@ -470,36 +474,38 @@ int compiler_expr(Compiler* C, Expr* expr)
 
             if (!fix->isPre)
             {
-                old = alloc_reg(C);
+                old = (target > -1) ? target : alloc_reg(C);
                 ir_emit(&C->ir, IR_MOVE, old, reg, 0, fix->target->base.location);
             }
-            //int old = alloc_reg(C);
-            //int old = symbol->reg;
-            //ir_emit(&C->ir, IR_LOAD_VAR, old, reg, 0, fix->target->base.location);
 
             int one = alloc_reg(C);
             Value v = make_int(1);
             int k = const_add(&C->constants, v);
             ir_emit(&C->ir, IR_LOAD_CONST, one, k, 0, fix->op.location); // Pendiente revisar comportamiento
 
-            int result = alloc_reg(C);
+            //int result = (target > -1) ? target : reg;
 
             if (fix->op.type == M_INC)
             {
-                ir_emit(&C->ir, IR_ADD, result, reg, one, fix->expr.base.location);
+                ir_emit(&C->ir, IR_ADD, reg, reg, one, fix->expr.base.location);
             }
             else
             {
-                ir_emit(&C->ir, IR_SUB, result, reg, one, fix->expr.base.location);
+                ir_emit(&C->ir, IR_SUB, reg, reg, one, fix->expr.base.location);
             }
 
-            //ir_emit(&C->ir, IR_STORE_VAR, slot, result, 0, fix->expr.base.location);
-
-            if (reg != result)
-                ir_emit(&C->ir, IR_MOVE, reg, result, 0, fix->expr.base.location);
+            //if (reg != result)
+                //ir_emit(&C->ir, IR_MOVE, reg, result, 0, fix->expr.base.location);
 
             if (fix->isPre)
+            {
+                if (target > -1 && target != reg)
+                {
+                    ir_emit(&C->ir, IR_MOVE, target, reg, 0, fix->target->base.location);
+                    return target;
+                }
                 return reg;
+            }
             else
                 return old;
         }
@@ -531,7 +537,7 @@ void compiler_stmt(Compiler* C, Stmt* stmt)
 
                 if (i < var->valuesCount)
                 {
-                    value_reg = compiler_expr(C, var->values[i]);
+                    value_reg = compiler_expr(C, var->values[i], reg);
                 }
                 else
                 {
@@ -541,9 +547,8 @@ void compiler_stmt(Compiler* C, Stmt* stmt)
                     ir_emit(&C->ir, IR_LOAD_CONST, value_reg, k, 0, var->values[var->valuesCount - 1]->base.location); // NaN, pendiente mejorar
                 }
 
-                if (reg != value_reg)
-                    ir_emit(&C->ir, IR_MOVE, reg, value_reg, 0, var->stmt.base.location);
-                //ir_emit(&C->ir, IR_STORE_VAR, reg, value_reg, 0, var->stmt.base.location);
+                //if (reg != value_reg)
+                    //ir_emit(&C->ir, IR_MOVE, reg, value_reg, 0, var->stmt.base.location);
             }
 
             return;
@@ -564,7 +569,7 @@ void compiler_stmt(Compiler* C, Stmt* stmt)
         case STMT_IF:
         {
             StmtIf* ifstmt = (StmtIf*) stmt;
-            int cond = compiler_expr(C, ifstmt->condition);
+            int cond = compiler_expr(C, ifstmt->condition, -1);
 
             int jump_if_false = ir_emit_jump(&C->ir, IR_JUMP_IF_FALSE, cond, ifstmt->condition->base.location);
 
@@ -595,7 +600,7 @@ void compiler_stmt(Compiler* C, Stmt* stmt)
 
             int current = ir_current(&C->ir);
 
-            int cond = compiler_expr(C, whileStmt->condition);
+            int cond = compiler_expr(C, whileStmt->condition, -1);
 
             int jump_if_false = ir_emit_jump(&C->ir, IR_JUMP_IF_FALSE, cond, whileStmt->condition->base.location);
 
@@ -619,7 +624,8 @@ void compiler_stmt(Compiler* C, Stmt* stmt)
 
         case STMT_EXPR:
         {
-            compiler_expr(C, stmt);
+            StmtExpr* stmtE = (StmtExpr*) stmt;
+            compiler_expr(C, stmtE->expr, -1);
             return;
         }
 
@@ -642,7 +648,7 @@ void compiler_stmt(Compiler* C, Stmt* stmt)
 
                 if (i < assign->valueCount)
                 {
-                    value_reg = compiler_expr(C, assign->values[i]);
+                    value_reg = compiler_expr(C, assign->values[i], reg);
                 }
                 else
                 {
@@ -650,9 +656,8 @@ void compiler_stmt(Compiler* C, Stmt* stmt)
                     ir_emit(&C->ir, IR_LOAD_CONST, value_reg, 0, 0, assign->values[assign->valueCount - 1]->base.location); // NaN, pendiente mejorar
                 }
 
-                if (reg != value_reg)
-                    ir_emit(&C->ir, IR_MOVE, reg, value_reg, 0, assign->stmt.base.location);
-                //ir_emit(&C->ir, IR_STORE_VAR, reg, value_reg, 0, assign->stmt.base.location);
+                //if (reg != value_reg)
+                    //ir_emit(&C->ir, IR_MOVE, reg, value_reg, 0, assign->stmt.base.location);
             }
             return;
         }
@@ -661,8 +666,7 @@ void compiler_stmt(Compiler* C, Stmt* stmt)
         {
             StmtCompoundAssing* compound = (StmtCompoundAssing*) stmt;
             
-            int value = compiler_expr(C, compound->value);
-            //int target = compiler_expr(C, compound->target);
+            int value = compiler_expr(C, compound->value, -1);
 
             Symbol* symbol = symbols_resolve(&C->symbol, ((NameExpr*)compound->target)->name, C->src);
 
@@ -690,12 +694,10 @@ void compiler_stmt(Compiler* C, Stmt* stmt)
             case M_MOD_ASSING: op = IR_POW; break;
             default: op = IR_ADD; break; // temporal
             }
-            //ir_emit(&C->ir, IR_LOAD_VAR, r1, target, 0);
             ir_emit(&C->ir, op, target, target, value, compound->value->base.location);
             
             //if (target != r)
                 //ir_emit(&C->ir, IR_MOVE, target, r, 0, compound->stmt.base.location);
-            //ir_emit(&C->ir, IR_STORE_VAR, reg, r, 0, compound->stmt.base.location);
 
             return;
         }

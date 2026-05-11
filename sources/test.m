@@ -1,9 +1,5 @@
+var x = 0
 
-var a = 0
+while x < 10000000; x = x + 1
 
-/*for var i = 0; i < 10; i += 1 {
-    a += 1
-}*/
-
-while a < 1000000 a += 1
 
