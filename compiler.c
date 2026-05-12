@@ -61,6 +61,11 @@ static bool value_equals(Value a, Value b)
             return true;
         }
 
+        default:
+        {
+            return false;
+        }
+
     }
 }
 
@@ -176,7 +181,7 @@ static Value token_to_value(Compiler* C, Token t)
         }
         case M_V_NIL:
         {
-            make_nil();
+            return make_nil();
         }
 
         case M_V_MALFORMED_NUMBER:
@@ -417,6 +422,8 @@ int compiler_expr(Compiler* C, Expr* expr, int target)
                 case M_GTE: op = IR_GTE; break;
                 case M_EQ: op = IR_EQ; break;
                 case M_NEQ: op = IR_NEQ; break;
+                case M_OR: op = IR_OR; break;
+                case M_AND: op = IR_AND; break;
                 default: op = IR_ADD; break; // temporal
             }
 
@@ -618,8 +625,41 @@ void compiler_stmt(Compiler* C, Stmt* stmt)
 
         case STMT_FOR_NUMERIC:
         {
+            StmtForNumeric* stmtForN = (StmtForNumeric*) stmt;
 
-            break;
+            int init = ir_current(&C->ir);
+
+            compiler_stmt(C, stmtForN->from);
+            
+            int current = ir_current(&C->ir);
+
+            int cond = compiler_expr(C, stmtForN->to, -1);
+
+            int jump_if_false = ir_emit_jump(&C->ir, IR_JUMP_IF_FALSE, cond, stmtForN->to->base.location);
+
+            compiler_stmt(C, stmtForN->loopBranch);
+
+            if (stmtForN->step != NULL)
+                compiler_stmt(C, stmtForN->step);
+            else
+            {
+                int one = alloc_reg(C);
+                Value v = make_int(1);
+                int k = const_add(&C->constants, v);
+                ir_emit(&C->ir, IR_LOAD_CONST, one, k, 0, locationCPos(stmtForN->to->base.location.end, stmtForN->to->base.location.end));
+                IRInstruction ir = C->ir.data[init];
+                ir_emit(&C->ir, IR_ADD, ir.a, ir.a, one, locationCPos(stmtForN->to->base.location.end, stmtForN->to->base.location.end));
+
+            }
+
+            ir_emit(&C->ir, IR_JUMP, 0, current, 0, locationCPos(stmtForN->loopBranch->base.location.end, stmtForN->loopBranch->base.location.end));
+
+            int nextR = ir_current(&C->ir);
+
+            ir_patch(&C->ir, jump_if_false, nextR);
+
+
+            return;
         }
 
         case STMT_EXPR:
@@ -690,8 +730,8 @@ void compiler_stmt(Compiler* C, Stmt* stmt)
             case M_SLASH_ASSING: op = IR_DIV; break;
             case M_FLOOR_DIV_ASSING: op = IR_IDIV; break;
             case M_CONCAT_ASSING: op = IR_CONCAT; break;
-            case M_POW_ASSING: op = IR_MOD; break;
-            case M_MOD_ASSING: op = IR_POW; break;
+            case M_POW_ASSING: op = IR_POW; break;
+            case M_MOD_ASSING: op = IR_MOD; break;
             default: op = IR_ADD; break; // temporal
             }
             ir_emit(&C->ir, op, target, target, value, compound->value->base.location);
@@ -768,6 +808,10 @@ static void print_ir(Compiler* C, int i)
         printf("IR_UNM R%d R%d", ir.a, ir.b);
     else if (ir.op == IR_NOT)
         printf("IR_NOT R%d R%d", ir.a, ir.b);
+    else if (ir.op == IR_OR)
+        printf("IR_OR R%d R%d R%d", ir.a, ir.b ir.c);
+    else if (ir.op == IR_AND)
+        printf("IR_AND R%d R%d R%d", ir.a, ir.b ir.c);
     else if (ir.op == IR_EQ)
         printf("IR_EQ R%d R%d R%d", ir.a, ir.b, ir.c);
     else if (ir.op == IR_NEQ)

@@ -503,10 +503,50 @@ static void vm_run(VM* vm)
             case OP_NOT:
             {
                 uint8_t a = GET_A(instr);
-                uint8_t bx = GET_Bx(instr);
+                uint16_t bx = GET_Bx(instr);
 
                 Value val = R[bx];
                 setboolean(R[a], isfalse(val));
+
+                break;
+            }
+
+            case OP_OR:
+            {
+                uint8_t a = GET_A(instr);
+                uint8_t b = GET_B(instr);
+                uint8_t c = GET_C(instr);
+                
+                if (isfalse(R[b]))
+                {
+                    R[a].type = R[c].type;
+                    R[a] = R[c];
+                }
+                else
+                {
+                    R[a].type = R[b].type;
+                    R[a] = R[b];
+                }
+
+                break;
+            }
+
+            case OP_AND:
+            {
+                uint8_t a = GET_A(instr);
+                uint8_t b = GET_B(instr);
+                uint8_t c = GET_C(instr);
+
+                if (isfalse(R[b]))
+                {
+                    R[a].type = R[b].type;
+                    R[a] = R[b];
+                }
+                else
+                {
+                    R[a].type = R[c].type;
+                    R[a] = R[c];
+                }
 
                 break;
             }

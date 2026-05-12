@@ -27,6 +27,8 @@ typedef enum
     OP_CONCAT,      // A, B, C        R(A) = R(B) <> R(C)
     OP_UNM,         // A, B              R(A) = -R(B)
     OP_NOT,         // A, B            R(A) = not R(B)
+    OP_OR,          // A, B, C        R(A) = R(B) or R(C)
+    OP_AND,         // A, B, C        R(A) = R(B) and R(c)
 
     // Comparaciones
     OP_EQ,          // A, B, C        R(A) = R(B) == R(C)

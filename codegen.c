@@ -134,6 +134,20 @@ Chunk* generate_bydecode(CodeGen* G)
                 break;
             }
 
+            case IR_OR:
+            {
+                emit(G, CREATE_ABC(OP_OR, ir->a, ir->b, ir->c), loc);
+
+                break;
+            }
+
+            case IR_AND:
+            {
+                emit(G, CREATE_ABC(OP_AND, ir->a, ir->b, ir->c), loc);
+
+                break;
+            }
+
             case IR_EQ:
             {
                 emit(G, CREATE_ABC(OP_EQ, ir->a, ir->b, ir->c), loc);
@@ -265,6 +279,10 @@ static void print_bytecode(CodeGen* G, int i)
         printf("UNM R%d R%d", GET_A(inst), GET_Bx(inst));
     else if (op == OP_NOT)
         printf("NOT R%d R%d", GET_A(inst), GET_Bx(inst));
+    else if (op == OP_OR)
+        printf("OR R%d R%d R%d", GET_A(inst), GET_B(inst), GET_C(inst));
+    else if (op == OP_AND)
+        printf("AND R%d R%d R%d", GET_A(inst), GET_B(inst), GET_C(inst));
     else if (op == OP_EQ)
         printf("EQ R%d R%d R%d", GET_A(inst), GET_B(inst), GET_C(inst));
     else if (op == OP_NEQ)

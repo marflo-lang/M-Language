@@ -27,6 +27,8 @@ typedef enum
     IR_CONCAT,      // A, B, C        R(A) = R(B) <> R(C)
     IR_UNM,         // A, B              R(A) = -R(B)
     IR_NOT,         // A, B            R(A) = not R(B)
+    IR_OR,          // A, B, C        R(A) = R(B) or R(C)
+    IR_AND,         // A, B, C        R(A) = R(B) and R(c)
 
     // Comparaciones
     IR_EQ,          // A, B, C        R(A) = R(B) == R(C)

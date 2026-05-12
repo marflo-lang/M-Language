@@ -63,6 +63,7 @@ ParserRule rules[] = {
     [M_V_UNFINISHED_STRING] = {parser_expr_error, NULL, PREC_NONE},
     [M_V_TRUE] = {parser_literal, NULL, PREC_NONE},
     [M_V_FALSE] = {parser_literal, NULL, PREC_NONE},
+    [M_V_NIL] = {parser_literal, NULL, PREC_NONE},
     [M_V_IDENTIFIER] = {parser_identifier, NULL, PREC_NONE},
     [M_LPAREN] = {parser_grouping, parser_grouping, PREC_NONE},
 
@@ -111,8 +112,9 @@ ParserRule rules[] = {
     [M_CONST] = {NULL, NULL, PREC_NONE},
     [M_IF] = {NULL, NULL, PREC_NONE},
     [M_ELSEIF] = {NULL, NULL, PREC_NONE},
+    [M_WHILE] = {NULL, NULL, PREC_NONE},
+    [M_FOR] = {NULL, NULL, PREC_NONE},
     [M_ELSE] = {NULL, NULL, PREC_NONE},
-    [M_V_NIL] = {NULL, NULL, PREC_NONE},
     [M_ASSING] = {NULL, NULL, PREC_NONE},
     [M_PLUS_ASSING] = {NULL, NULL, PREC_NONE},
     [M_MINUS_ASSING] = {NULL, NULL, PREC_NONE},
@@ -601,30 +603,6 @@ static Stmt* parser_var(Parser* P, bool isConst)
     return (Stmt*) stmt;
 }
 
-//static Stmt* parser_ChooseCompoundOrAssing(Parser* P)
-//{
-//    if (P->previous.type == M_V_IDENTIFIER)
-//    {
-//        if (P->current.type == M_ASSING)
-//        {
-//            //Expr* left = parser_expression(P->previous);
-//            //return parser_assing(P, left);
-//        }
-//        else if (P->current.type >= M_PLUS_ASSING && P->current.type <= M_MOD_ASSING)
-//        {
-//
-//        }
-//        else
-//        {
-//            // error
-//        }
-//    }
-//    else
-//    {
-//        // error
-//    }
-//}
-
 /*
 TODO: Revisar la multi asignación, se comporta extraño, principalmente cuando son varios names
 */
@@ -727,11 +705,8 @@ static Stmt* parser_compound_assing(Parser* P, Expr* left)
 static Stmt* parser_if(Parser* P)
 {
     Position begin = P->previous.location.begin;
-    //print("condi1");
     Expr* condition = parser_expression(P);
-    //print("condi2");
     Stmt* ifBranch = parser_statement(P);
-    //print("pasa a");
     Stmt* elseBranch = NULL;
 
     if (match(P, M_ELSEIF))
@@ -753,8 +728,6 @@ static Stmt* parser_if(Parser* P)
     assert(ifBranch->base.location.end.offset > 0);
 
     Position end = elseBranch != NULL ? elseBranch->base.location.end :  ifBranch->base.location.end;
-
-    //print("final");
 
     stmt->stmt.base.location = locationCPos(begin, end);
     stmt->stmt.base.ttype = NODE_STMT;
@@ -783,25 +756,56 @@ static Stmt* parser_while(Parser* P)
     return (Stmt*) stmt;
 }
 
+// for i = 0, i < 10, i++
+// from -> i = 0
+// to -> i < 10
+// step -> i++
 static Stmt* parser_for_numeric(Parser* P)
 {
     Position begin = P->previous.location.begin;
 
-    Stmt* from = parser_statement(P);
+    // from
+    Token* identi = arena_allocator(P->arena, sizeof(Token));
+    identi[0] = P->current;
+    consume(P, M_V_IDENTIFIER, "identifier name");
+    consume(P, M_ASSING, "=");
+    Expr* tempValue[1];
+    tempValue[0] = parser_expression(P);
+
+    Expr** value = arena_allocator(P->arena, sizeof(Expr*));
+    memcpy(value, tempValue, sizeof(Expr*));
+
+
     if (P->current.type == M_COMMA)
         advance(P);
-    else if (P->current.type == M_SEMICOLON)
-        advance(P);
+    else if (P->previous.type == M_SEMICOLON)
+    {}
     else
-        consume(P, M_COMMA, ", after from statement");
+        consume(P, M_COMMA, ", on for numeric");
+
+    StmtVar* from = arena_allocator(P->arena, sizeof(StmtVar));
+
+    from->stmt.base.location = locationCPos(identi->location.begin, value[0]->base.location.end);
+    from->stmt.base.ttype = NODE_STMT;
+    from->stmt.stmt_type = STMT_VAR;
+    from->isConst = false;
+    from->names = identi;
+    from->namesCount = 1;
+    from->values = value;
+    from->valuesCount = 1;
+
+    // to
     Expr* to = parser_expression(P);
+
+    // step
     Stmt* step = NULL;
-    if (P->current.type == M_COMMA || P->current.type == M_SEMICOLON)
+    if (P->current.type == M_COMMA || P->previous.type == M_SEMICOLON)
     {
-        advance(P);
+        if (P->current.type == M_COMMA) advance(P);
         step = parser_statement(P);
     }
 
+    // loop branch
     Stmt* loopBranch = parser_statement(P);
 
     StmtForNumeric* stmt = arena_allocator(P->arena, sizeof(StmtForNumeric));
@@ -1206,18 +1210,23 @@ static void print_stmt(Parser* P, Stmt* stmt, const char* prefix, bool isLast)
             print_branch(mainPrefix, false);
             printf("From\n");
             char inPrefix[256];
-            build_prefix(inPrefix, prefix, isLast);
+            build_prefix(inPrefix, mainPrefix, false);
             print_branch(inPrefix, false);
             print_stmt(P, forNumeric->from, inPrefix, true);
             print_branch(mainPrefix, false);
             printf("To\n");
             print_expr(P, forNumeric->to, inPrefix, true);
-            print_branch(mainPrefix, false);
-            printf("Step\n");
-            print_stmt(P, forNumeric->step, inPrefix, true);
+            if (forNumeric->step != NULL)
+            {
+                print_branch(mainPrefix, false);
+                printf("Step\n");
+                print_stmt(P, forNumeric->step, inPrefix, true);
+            }
             print_branch(mainPrefix, true);
             printf("Loop Branch\n");
-            print_stmt(P, forNumeric->loopBranch, inPrefix, true);
+            char loopPrefix[256];
+            build_prefix(loopPrefix, mainPrefix, true);
+            print_stmt(P, forNumeric->loopBranch, loopPrefix, true);
             break;
         }
         case STMT_EXPR:
