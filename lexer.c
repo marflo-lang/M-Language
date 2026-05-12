@@ -545,6 +545,8 @@ static Token scanToken(Lexer* L)
             return makeToken(L, M_SEMICOLON, begin);
         case ',':
             return makeToken(L, M_COMMA, begin);
+        case '.':
+            return makeToken(L, M_DOT, begin);
         case '#':
             // # short comment
             // change to makeShortComment(L, begin)

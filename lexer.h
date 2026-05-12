@@ -94,6 +94,7 @@ typedef enum
     M_LBRAKET, // [
     M_RBRAKET, // ]
     M_SEMICOLON, // ;
+    M_DOT, // .
     M_COMMA, // ,
     
     // Comment

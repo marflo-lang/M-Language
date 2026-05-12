@@ -46,9 +46,12 @@ static bool value_equals(Value a, Value b)
             return a.b == b.b;
         }
 
-        case VAL_STRING:
+        case VAL_OBJ:
         {
-            return a.string.length == b.string.length && (strncmp(a.string.chars, b.string.chars, a.string.length) == 0);
+            //return a.string.length == b.string.length && (strncmp(a.string.chars, b.string.chars, a.string.length) == 0);
+            GCObject* objA = (GCObject*) a.obj;
+            GCObject* objB = (GCObject*) b.obj;
+            return objA == objB;
         }
 
         case VAL_NIL:
@@ -118,9 +121,25 @@ static Value make_boolean(bool v)
 static Value make_string(const char* src, int offset, int length)
 {
     Value val;
-    val.type = VAL_STRING;
-    val.string.chars = src + offset;
-    val.string.length = length;
+    //val.type = VAL_STRING;
+    //val.string.chars = src + offset;
+    //val.string.length = length;
+    ObjString* string = malloc(sizeof(ObjString));
+    if (string == NULL)
+    {
+        memoryCrash("Assign String");
+        exit(1);
+    }
+    string->gc.objType = OBJ_STRING;
+    string->gc.market = false;
+    string->gc.next = NULL;
+    string->chars = src + offset;
+    string->length = length;
+    string->hash = "";
+
+    val.type = VAL_OBJ;
+    val.obj = string;
+
     return val;
 }
 
@@ -778,8 +797,16 @@ static void print_ir(Compiler* C, int i)
             printf(" [NaN]");
         else if (v.type == VAL_NIL)
             printf(" [nil]");
-        else if (v.type == VAL_STRING)
-            printf(" ['%.*s']", v.string.length, v.string.chars);
+        else if (v.type == VAL_OBJ)
+        {
+            GCObject* obj = (GCObject*)v.obj;
+            if (obj->objType == OBJ_STRING)
+            {
+                ObjString* string = (ObjString*)obj;
+                printf(" ['%.*s']", string->length, string->chars);
+            }
+
+        }
 
     }
     else if (ir.op == IR_LOAD_VAR)

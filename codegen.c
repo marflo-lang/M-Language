@@ -249,8 +249,16 @@ static void print_bytecode(CodeGen* G, int i)
             printf(" [NaN]");
         else if (v.type == VAL_NIL)
             printf(" [nil]");
-        else if (v.type == VAL_STRING)
-            printf(" ['%.*s']", v.string.length, v.string.chars);
+        else if (v.type == VAL_OBJ)
+        {
+            GCObject* obj = (GCObject*) v.obj;
+            if (obj->objType == OBJ_STRING)
+            {
+                ObjString* string = (ObjString*) obj;
+                printf(" ['%.*s']", string->length, string->chars);
+            }
+
+        }
 
     }
     else if (op == OP_LOAD_VAR)

@@ -442,7 +442,10 @@ static void vm_run(VM* vm)
                     memcpy(result + slenvalue(R[b]), svalue(R[c]), slenvalue(R[c]));
                     result[newLength] = '\0';
 
-                    setstring(R[a], result, newLength);
+                    setstring(&R[a], result, newLength);
+
+                    printf("R[a] = '%.*s'\n", ((ObjString*)R[a].obj)->length, ((ObjString*)R[a].obj)->chars);
+
                 }
                 else
                 {
@@ -573,7 +576,9 @@ static void vm_run(VM* vm)
                     }
                     else if (isstring(R[b]))
                     {
-                        setboolean(R[a], (R[b].string.length == R[c].string.length && (strncmp(R[b].string.chars, R[c].string.chars, R[b].string.length) == 0)));
+                        //setboolean(R[a], (R[b].string.length == R[c].string.length && (strncmp(R[b].string.chars, R[c].string.chars, R[b].string.length) == 0)));
+                        setboolean(R[a], R[b].obj == R[c].obj);
+
                     }
                     else if (isnil(R[b]))
                     {
@@ -618,7 +623,8 @@ static void vm_run(VM* vm)
                     }
                     else if (isstring(R[b]))
                     {
-                        setboolean(R[a], (R[b].string.length != R[c].string.length || !(strncmp(R[b].string.chars, R[c].string.chars, R[b].string.length) == 0)));
+                        //setboolean(R[a], (R[b].string.length != R[c].string.length || !(strncmp(R[b].string.chars, R[c].string.chars, R[b].string.length) == 0)));
+                        setboolean(R[a], R[b].obj != R[c].obj);
                     }
                     else if (isnil(R[b]))
                     {

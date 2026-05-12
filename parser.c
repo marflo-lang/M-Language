@@ -55,7 +55,7 @@ static void print_stmt(Parser* P, Stmt* stmt, const char* prefix, bool isLast);
 
 
 ParserRule rules[] = {
-    // int, float, string, boolean, identifier, (
+    // int, float, string, boolean, nil,  identifier, (
     [M_V_INT] = {parser_int, NULL, PREC_NONE},
     [M_V_FLOAT] = {parser_float, NULL, PREC_NONE},
     [M_V_MALFORMED_NUMBER] = {parser_expr_error, NULL, PREC_NONE},
@@ -124,6 +124,7 @@ ParserRule rules[] = {
     [M_CONCAT_ASSING] = {NULL, NULL, PREC_NONE},
     [M_POW_ASSING] = {NULL, NULL, PREC_NONE},
     [M_MOD_ASSING] = {NULL, NULL, PREC_NONE},
+    [M_DOT] = {NULL, NULL, PREC_NONE},
     [M_RPAREN] = {NULL, NULL, PREC_NONE},
     [M_RBRACE] = {NULL, NULL, PREC_NONE},
     [M_SEMICOLON] = {NULL, NULL, PREC_NONE},
