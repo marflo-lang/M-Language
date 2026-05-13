@@ -9,7 +9,7 @@ typedef struct Chunk
     Instruction* instructions; // array of Instruction
     int actual_instruction;
     int instruction_capacity; // Instruction Count, the actual instruction
-    Value* constants; // array of Value
+    Constant* constants; // array of Value
     int constants_capacity; // Constant Count, the actual actual constant
     int register_capacity; // Register Count, the max of registers
     int parameter_count; // Parameter Count
@@ -34,6 +34,11 @@ typedef struct
     bool has_error;
     char* error_message;
     const char* name;
+    GCObject* objects;
+    size_t bytes_allocated;
+    size_t next_gc;
+    Value* globals;
+    bool gcEnable;
 }VM;
 
 

@@ -56,7 +56,7 @@ static void vm_run(VM* vm)
     Chunk* chunk = frame->chunk;
     Instruction* pc = frame->ip;
     Value* R = frame->registers;
-    Value* K = chunk->constants;
+    Constant* K = chunk->constants;
     //while (vm->frame_count > 0 && !vm->has_error)
     int i = 0;
     while(true)
@@ -73,8 +73,34 @@ static void vm_run(VM* vm)
                 uint8_t a = GET_A(instr);
                 uint16_t bx = GET_Bx(instr);
                 
-                R[a].type = K[bx].type;
-                R[a] = K[bx];
+                //R[a].type = K[bx].type;
+                //R[a] = K[bx];
+                Constant kbx = K[bx];
+                if (kbx.type == C_INT)
+                {
+                    setint(R[a], kbx.i);
+                }
+                else if (kbx.type == C_FLOAT)
+                {
+                    setfloat(R[a], kbx.f);
+                }
+                else if (kbx.type == C_BOOLEAN)
+                {
+                    setboolean(R[a], kbx.b);
+                }
+                else if (kbx.type == C_NIL)
+                {
+                    setnil(R[a]);
+                }
+                else if (kbx.type == C_NAN)
+                {
+                    setnan(R[a]);
+                }
+                else if (kbx.type == C_STRING)
+                {
+                    setstring(&R[a], kbx.string.chars, kbx.string.length);
+                }
+
                 break;
             }
 
@@ -861,6 +887,11 @@ void vm_execute(Chunk* main_chunk, const char* name)
     vm->has_error = false;
     vm->stack_top = vm->stack;
     vm->name = name;
+    vm->objects = NULL;
+    vm->bytes_allocated = 0;
+    vm->next_gc = 1024 * 15;
+    vm->globals = NULL;
+    vm->gcEnable = false;
 
     // frame inicial
     CallFrame* frame = &vm->frames[vm->frame_count++];

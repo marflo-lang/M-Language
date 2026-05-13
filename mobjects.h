@@ -18,6 +18,16 @@ typedef enum
 
 typedef enum
 {
+    C_NAN,
+    C_NIL,
+    C_INT,
+    C_FLOAT,
+    C_BOOLEAN,
+    C_STRING,
+} ConstantType;
+
+typedef enum
+{
     OBJ_STRING,
     OBJ_LIST,
     OBJ_DICTIONARY
@@ -42,7 +52,7 @@ typedef struct
     uint32_t hash;
 } ObjString;
 
-typedef struct
+typedef struct Value
 {
     CValueType type;
 
@@ -54,6 +64,23 @@ typedef struct
         GCObject* obj;
     };
 } Value;
+
+typedef struct
+{
+    ConstantType type;
+
+    union
+    {
+        int i;
+        double f;
+        bool b;
+        struct
+        {
+            const char* chars;
+            int length;
+        } string;
+    };
+} Constant;
 
 /* macros to access values */
 #define ttype(o)    ((o).type)

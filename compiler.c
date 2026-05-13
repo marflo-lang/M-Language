@@ -7,11 +7,6 @@
 #include <string.h>
 #include <locale.h>
 
-static char* getLexeme(Compiler* C, Token t)
-{
-    //return strndup();
-}
-
 static void begin_scope(SymbolTable* T)
 {
     T->scope_depth++;
@@ -25,41 +20,41 @@ static void end_scope(SymbolTable* T)
         T->count--;
 }
 
-static bool value_equals(Value a, Value b)
+static bool value_equals(Constant a, Constant b)
 {
     if (a.type != b.type) return false;
 
     switch (a.type)
     {
-        case VAL_INT:
+        case C_INT:
         {
             return a.i == b.i;
         }
 
-        case VAL_FLOAT:
+        case C_FLOAT:
         {
             return a.f == b.f;
         }
 
-        case VAL_BOOLEAN:
+        case C_BOOLEAN:
         {
             return a.b == b.b;
         }
 
-        case VAL_OBJ:
+        case C_STRING:
         {
-            //return a.string.length == b.string.length && (strncmp(a.string.chars, b.string.chars, a.string.length) == 0);
-            GCObject* objA = (GCObject*) a.obj;
-            GCObject* objB = (GCObject*) b.obj;
-            return objA == objB;
+            return a.string.length == b.string.length && (strncmp(a.string.chars, b.string.chars, a.string.length) == 0);
+            //GCObject* objA = (GCObject*) a.obj;
+            //GCObject* objB = (GCObject*) b.obj;
+            //return objA == objB;
         }
 
-        case VAL_NIL:
+        case C_NIL:
         {
             return true;
         }
 
-        case VAL_NAN:
+        case C_NAN:
         {
             return true;
         }
@@ -72,7 +67,7 @@ static bool value_equals(Value a, Value b)
     }
 }
 
-static int const_find(ConstTable* T, Value v)
+static int const_find(ConstTable* T, Constant v)
 {
     for (int i = 0; i < T->count; i++)
     {
@@ -94,70 +89,70 @@ static bool compare_tokens(Token a, Token b, const char* src)
     ) == 0;
 }
 
-static Value make_int(int v)
+static Constant make_int(int v)
 {
-    Value val;
-    val.type = VAL_INT;
+    Constant val;
+    val.type = C_INT;
     val.i = v;
     return val;
 }
 
-static Value make_float(double v)
+static Constant make_float(double v)
 {
-    Value val;
-    val.type = VAL_FLOAT;
+    Constant val;
+    val.type = C_FLOAT;
     val.f = v;
     return val;
 }
 
-static Value make_boolean(bool v)
+static Constant make_boolean(bool v)
 {
-    Value val;
-    val.type = VAL_BOOLEAN;
+    Constant val;
+    val.type = C_BOOLEAN;
     val.b = v;
     return val;
 }
 
-static Value make_string(const char* src, int offset, int length)
+static Constant make_string(const char* src, int offset, int length)
 {
-    Value val;
-    //val.type = VAL_STRING;
-    //val.string.chars = src + offset;
-    //val.string.length = length;
-    ObjString* string = malloc(sizeof(ObjString));
-    if (string == NULL)
-    {
-        memoryCrash("Assign String");
-        exit(1);
-    }
-    string->gc.objType = OBJ_STRING;
-    string->gc.market = false;
-    string->gc.next = NULL;
-    string->chars = src + offset;
-    string->length = length;
-    string->hash = "";
+    Constant val;
+    val.type = C_STRING;
+    val.string.chars = src + offset;
+    val.string.length = length;
+    //ObjString* string = malloc(sizeof(ObjString));
+    //if (string == NULL)
+    //{
+    //    memoryCrash("Assign String");
+    //    exit(1);
+    //}
+    //string->gc.objType = OBJ_STRING;
+    //string->gc.market = false;
+    //string->gc.next = NULL;
+    //string->chars = src + offset;
+    //string->length = length;
+    //string->hash = "";
 
-    val.type = VAL_OBJ;
-    val.obj = string;
+    //val.type = VAL_OBJ;
+    //val.obj = string;
 
     return val;
 }
 
-static Value make_nil()
+static Constant make_nil()
 {
-    Value val;
-    val.type = VAL_NIL;
+    Constant val;
+    val.type = C_NIL;
     return val;
 }
 
-static Value make_nan()
+static Constant make_nan()
 {
-    Value val;
-    val.type = VAL_NAN;
+    Constant val;
+    val.type = C_NAN;
     return val;
 }
 
-static Value token_to_value(Compiler* C, Token t)
+static Constant token_to_value(Compiler* C, Token t)
 {
     switch (t.type)
     {
@@ -240,7 +235,7 @@ static void ir_emit(IRList* list, IROpCode op, int a, int b, int c, Location loc
     list->count++;
 }
 
-static int const_add(ConstTable* T, Value v)
+static int const_add(ConstTable* T, Constant v)
 {
     int existing = const_find(T, v);
     if (existing != -1) return existing;
@@ -248,7 +243,7 @@ static int const_add(ConstTable* T, Value v)
     if (T->count >= T->capacity)
     {
         T->capacity = T->capacity < 8 ? 8 : T->capacity * 2;
-        Value* newData = realloc(T->data, sizeof(Value) * T->capacity);
+        Constant* newData = realloc(T->data, sizeof(Constant) * T->capacity);
         if (newData == NULL)
         {
             memoryCrash("Compile time");
@@ -389,7 +384,7 @@ int compiler_expr(Compiler* C, Expr* expr, int target)
             //int r = alloc_reg(C);
             int r = (target > -1) ? target : alloc_reg(C);
 
-            Value v = token_to_value(C, literal->value);
+            Constant v = token_to_value(C, literal->value);
 
             int k = const_add(&C->constants, v);
 
@@ -505,7 +500,7 @@ int compiler_expr(Compiler* C, Expr* expr, int target)
             }
 
             int one = alloc_reg(C);
-            Value v = make_int(1);
+            Constant v = make_int(1);
             int k = const_add(&C->constants, v);
             ir_emit(&C->ir, IR_LOAD_CONST, one, k, 0, fix->op.location); // Pendiente revisar comportamiento
 
@@ -568,7 +563,7 @@ void compiler_stmt(Compiler* C, Stmt* stmt)
                 else
                 {
                     value_reg = alloc_reg(C);
-                    Value v = make_nan();
+                    Constant v = make_nan();
                     int k = const_add(&C->constants, v);
                     ir_emit(&C->ir, IR_LOAD_CONST, value_reg, k, 0, var->values[var->valuesCount - 1]->base.location); // NaN, pendiente mejorar
                 }
@@ -663,7 +658,7 @@ void compiler_stmt(Compiler* C, Stmt* stmt)
             else
             {
                 int one = alloc_reg(C);
-                Value v = make_int(1);
+                Constant v = make_int(1);
                 int k = const_add(&C->constants, v);
                 ir_emit(&C->ir, IR_LOAD_CONST, one, k, 0, locationCPos(stmtForN->to->base.location.end, stmtForN->to->base.location.end));
                 IRInstruction ir = C->ir.data[init];
@@ -785,29 +780,20 @@ static void print_ir(Compiler* C, int i)
     printf("%d: ", C->ir.locations[i].begin.line);
     if (ir.op == IR_LOAD_CONST)
     {
-        Value v = C->constants.data[ir.b];
+        Constant v = C->constants.data[ir.b];
         printf("IR_LOADK R%d K%d", ir.a, ir.b);
-        if (v.type == VAL_INT)
+        if (v.type == C_INT)
             printf(" [%d]", v.i);
-        else if (v.type == VAL_FLOAT)
+        else if (v.type == C_FLOAT)
             printf(" [%f]", v.f);
-        else if (v.type == VAL_BOOLEAN)
+        else if (v.type == C_BOOLEAN)
             printf(" [%s]", v.b == true ? "true" : "false");
-        else if (v.type == VAL_NAN)
+        else if (v.type == C_NAN)
             printf(" [NaN]");
-        else if (v.type == VAL_NIL)
+        else if (v.type == C_NIL)
             printf(" [nil]");
-        else if (v.type == VAL_OBJ)
-        {
-            GCObject* obj = (GCObject*)v.obj;
-            if (obj->objType == OBJ_STRING)
-            {
-                ObjString* string = (ObjString*)obj;
-                printf(" ['%.*s']", string->length, string->chars);
-            }
-
-        }
-
+        else if (v.type == C_STRING)
+            printf(" [%.*s]", v.string.length, v.string.chars);
     }
     else if (ir.op == IR_LOAD_VAR)
         printf("IR_LOADV R%d S%d", ir.a, ir.b);

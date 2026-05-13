@@ -107,7 +107,7 @@ typedef struct
 
 typedef struct
 {
-    Value* data;
+    Constant* data;
     int count;
     int capacity;
 } ConstTable;

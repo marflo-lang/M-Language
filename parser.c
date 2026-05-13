@@ -23,6 +23,8 @@ static Expr* parser_unary(Parser* P);
 static Expr* parser_binary(Parser* P, Expr* left);
 static Expr* parser_prefix(Parser* P);
 static Expr* parser_posfix(Parser* P, Expr* left);
+static Expr* parser_list(Parser* P);
+static Expr* parser_dict(Parser* P);
 static Expr* parser_expr_error(Parser* P);
 
 // Constructors
@@ -55,7 +57,7 @@ static void print_stmt(Parser* P, Stmt* stmt, const char* prefix, bool isLast);
 
 
 ParserRule rules[] = {
-    // int, float, string, boolean, nil,  identifier, (
+    // int, float, string, boolean, nil,  identifier, (, [
     [M_V_INT] = {parser_int, NULL, PREC_NONE},
     [M_V_FLOAT] = {parser_float, NULL, PREC_NONE},
     [M_V_MALFORMED_NUMBER] = {parser_expr_error, NULL, PREC_NONE},
@@ -66,6 +68,9 @@ ParserRule rules[] = {
     [M_V_NIL] = {parser_literal, NULL, PREC_NONE},
     [M_V_IDENTIFIER] = {parser_identifier, NULL, PREC_NONE},
     [M_LPAREN] = {parser_grouping, parser_grouping, PREC_NONE},
+    [M_LBRAKET] = {parser_list, NULL, PREC_POSTFIX},
+    [M_LBRACE] = {parser_dict, NULL, PREC_POSTFIX},
+    [M_FIXED] = {parser_list, NULL, PREC_POSTFIX},
 
     // <>
     [M_CONCAT] = {NULL, parser_binary, PREC_CONCAT},
@@ -127,6 +132,7 @@ ParserRule rules[] = {
     [M_DOT] = {NULL, NULL, PREC_NONE},
     [M_RPAREN] = {NULL, NULL, PREC_NONE},
     [M_RBRACE] = {NULL, NULL, PREC_NONE},
+    [M_RBRAKET] = {NULL, NULL, PREC_NONE},
     [M_SEMICOLON] = {NULL, NULL, PREC_NONE},
     [M_COMMA] = {NULL, NULL, PREC_NONE},
     [M_SHORT_COMMENT] = {NULL, NULL, PREC_NONE},
@@ -464,6 +470,166 @@ static Expr* new_fix(Parser* P, Token op, Expr* right, bool isPre)
     fix->target = right;
 
     return (Expr*) fix;
+}
+
+static Expr* parser_list(Parser* P)
+{
+    Position begin;
+    Position end;
+    bool fixed = false;
+    Expr* capacity = NULL;
+    if (P->previous.type == M_FIXED)
+    {
+        begin = P->previous.location.begin;
+        fixed = true;
+        consume(P, M_LPAREN, "( after keyword fixed");
+        capacity = parser_expression(P);
+        consume(P, M_RPAREN, ") after fixed amount");
+    }
+    if (!fixed)
+        begin = P->previous.location.begin;
+    if (P->previous.type != M_LBRAKET)
+        consume(P, M_LBRAKET, "[ to init list literal");
+
+    Expr* tempElements[256];
+    int elementAmount = 0;
+    printf("1\n");
+    while (true)
+    {
+        
+        if (elementAmount >= 256)
+        {
+            syntaxError("too many elements in list", P->name, tempElements[elementAmount-1]->base.location);
+            end = tempElements[elementAmount - 1]->base.location.end;
+            if (P->current.type == M_RBRAKET)
+                advance(P);
+            break;
+        }
+
+        tempElements[elementAmount++] = parser_expression(P);
+        if (P->current.type == M_COMMA || P->previous.type == M_SEMICOLON)
+        {
+            if (P->current.type == M_COMMA) advance(P);
+            continue;
+        }
+        else if (P->current.type == M_RBRAKET)
+        {
+            end = P->current.location.end;
+            advance(P);
+            break;
+        }
+        else
+        {
+            consume(P, M_RBRAKET, "] to close list literal");
+            break;
+        }
+    }
+
+    Expr** elements = arena_allocator(P->arena, sizeof(Expr*) * elementAmount);
+    memcpy(elements, tempElements, sizeof(Expr*) * elementAmount);
+    
+    LiteralListExpr* list = arena_allocator(P->arena, sizeof(LiteralListExpr));
+
+    list->expr.base.location = locationCPos(begin, end);
+    list->expr.base.ttype = NODE_EXPR;
+    list->expr.expr_type = EXPR_LIST;
+    list->capacity = capacity;
+    list->count = elementAmount;
+    list->elements = elements;
+    list->fixed = fixed;
+
+    return (Expr*) list;
+}
+
+static Expr* parser_dict(Parser* P)
+{
+    Position begin;
+    Position end;
+    bool fixed = false;
+    //Expr* capacity = NULL;
+    if (P->previous.type == M_FIXED)
+    {
+        begin = P->previous.location.begin;
+        fixed = true;
+        consume(P, M_LPAREN, "( after keyword fixed");
+        //capacity = parser_expression(P);
+        consume(P, M_RPAREN, ") after fixed amount");
+    }
+    if (!fixed)
+        begin = P->previous.location.begin;
+    if (P->previous.type != M_LBRACE)
+        consume(P, M_LBRAKET, "{ to init dictionary literal");
+
+    Entry tempEntries[256];
+    int entriesAmount = 0;
+
+    while (true)
+    {
+        if (entriesAmount >= 256)
+        {
+            syntaxError("too many elements in list", P->name, tempEntries[entriesAmount - 1].value->base.location);
+            end = tempEntries[entriesAmount - 1].value->base.location.end;
+            if (P->current.type == M_RBRAKET)
+                advance(P);
+            break;
+        }
+
+        Expr* key = NULL;
+        if (P->current.type == M_LBRAKET)
+        {
+            advance(P);
+            key = parser_expression(P);
+            consume(P, M_RBRAKET, "] to close [");
+        }
+        else if (P->current.type == M_V_IDENTIFIER)
+        {
+            key = parser_expression(P);
+        }
+
+        consume(P, M_ASSING, "= on dictionary");
+
+        Expr* value = parser_expression(P);
+
+        Entry entry;
+        entry.expr.base.location = locationCPos(key->base.location.begin, value->base.location.end);
+        entry.expr.base.ttype = NODE_EXPR;
+        entry.expr.expr_type = EXPR_ENTRY;
+        entry.key = key;
+        entry.value = value;
+
+        tempEntries[entriesAmount++] = entry;
+
+        if (P->current.type == M_COMMA || P->previous.type == M_SEMICOLON)
+        {
+            if (P->current.type == M_COMMA) advance(P);
+            continue;
+        }
+        else if (P->current.type == M_RBRACE)
+        {
+            end = P->current.location.end;
+            advance(P);
+            break;
+        }
+        else
+        {
+            consume(P, M_RBRAKET, "} to close dictionary literal");
+            break;
+        }
+    }
+
+    Entry* entries = arena_allocator(P->arena, sizeof(Entry) * entriesAmount);
+    memcpy(entries, tempEntries, sizeof(Entry) * entriesAmount);
+
+    LiteralDictExpr* dict = arena_allocator(P->arena, sizeof(LiteralDictExpr));
+    dict->expr.base.location = locationCPos(begin, end);
+    dict->expr.base.ttype = NODE_EXPR;
+    dict->expr.expr_type = EXPR_DICT;
+    //dict->capacity = capacity;
+    dict->count = entriesAmount;
+    dict->fixed = fixed;
+    dict->entries = entries;
+
+    return (Expr*) dict;
 }
 
 static Expr* parser_grouping(Parser* P)
@@ -1085,6 +1251,89 @@ static void print_expr(Parser* P, Expr* e, const char* prefix, bool isLast)
             char newPrefix[256];
             build_prefix(newPrefix, targetPrefix, true);
             print_expr(P, postfix->target, newPrefix, true);
+            break;
+        }
+
+        case EXPR_LIST:
+        {
+            LiteralListExpr* list = (LiteralListExpr*) e;
+            printf("List\n");
+            char mainPrefix[256];
+            build_prefix(mainPrefix, prefix, isLast);
+            print_branch(mainPrefix, false);
+            printf("Fixed\n");
+            char inPrefix[256];
+            build_prefix(inPrefix, mainPrefix, false);
+            print_branch(inPrefix, true);
+            printf("%s\n", list->fixed ? "true" : "false");
+            print_branch(mainPrefix, false);
+            printf("Capacity\n");
+            if (list->capacity != NULL)
+                print_expr(P, list->capacity, inPrefix, true);
+            else
+            {
+                print_branch(inPrefix, true);
+                printf("Dinamic\n");
+            }
+            print_branch(mainPrefix, true);
+            char lastPrefix[256];
+            build_prefix(lastPrefix, mainPrefix, true);
+            printf("Elements\n");
+            for (int i = 0; i < list->count; i++)
+            {
+                //printf("%d: ", i);
+                print_expr(P, list->elements[i], lastPrefix, i == (list->count - 1));
+            }
+
+            break;
+        }
+
+        case EXPR_DICT:
+        {
+
+            LiteralDictExpr* dict = (LiteralDictExpr*)e;
+            printf("Dictionary\n");
+            char mainPrefix[256];
+            build_prefix(mainPrefix, prefix, isLast);
+            print_branch(mainPrefix, false);
+            printf("Fixed\n");
+            char inPrefix[256];
+            build_prefix(inPrefix, mainPrefix, false);
+            print_branch(inPrefix, true);
+            printf("%s\n", dict->fixed ? "true" : "false");
+            print_branch(mainPrefix, false);
+            printf("Count\n");
+            print_branch(inPrefix, true);
+            printf("%d\n", dict->count);
+            //if (dict->count != NULL)
+                //print_expr(P, dict->count, inPrefix, true);
+            //else
+            //{
+                //print_branch(inPrefix, true);
+                //printf("Dinamic\n");
+            //}
+            print_branch(mainPrefix, true);
+            printf("Entries\n");
+            char in2Prefix[256];
+            build_prefix(in2Prefix, mainPrefix, true);
+            print_branch(in2Prefix, false);
+            printf("Keys:\n");
+            char lastPrefix[256];
+            build_prefix(lastPrefix, in2Prefix, false);
+            for (int i = 0; i < dict->count; i++)
+            {
+                print_expr(P, dict->entries[i].key, lastPrefix, i == (dict->count - 1));
+            }
+            char in3Prefix[256];
+            build_prefix(in3Prefix, mainPrefix, true);
+            print_branch(in3Prefix, true);
+            printf("Values:\n");
+            char last2Prefix[256];
+            build_prefix(last2Prefix, in3Prefix, true);
+            for (int i = 0; i < dict->count; i++)
+            {
+                print_expr(P, dict->entries[i].value, last2Prefix, i == (dict->count - 1));
+            }
             break;
         }
 

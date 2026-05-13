@@ -1,13 +1,8 @@
-var text = "hola"
-var text2 = " mundo"
+var w = 5
 
-var junto = text <> text2
+var x = fixed(w * w - 2) [10, 20; 30, w; not w, w*2, fixed(6) [5, 9, w]]
 
-var r1 = text == text
-var r2 = text != text
-var r3 = text == text2
-var r4 = text != text2
-var r5 = text < text2
+var d = {a = 4, ["hola"] = true, [5] = x; [w] = w, [[1, 2, 3]] = {a = "a", b = "b"}; [{[x] = 6}] = {xa = "abc"}}
 
 
 

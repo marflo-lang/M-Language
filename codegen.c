@@ -237,28 +237,20 @@ static void print_bytecode(CodeGen* G, int i)
     printf("%d: ", chunk->lines[i]);
     if (op == OP_LOADK)
     {
-        Value v = chunk->constants[GET_Bx(inst)];
+        Constant v = chunk->constants[GET_Bx(inst)];
         printf("LOADK R%d K%d", GET_A(inst), GET_Bx(inst));
-        if (v.type == VAL_INT)
+        if (v.type == C_INT)
             printf(" [%d]", v.i);
-        else if (v.type == VAL_FLOAT)
+        else if (v.type == C_FLOAT)
             printf(" [%f]", v.f);
-        else if (v.type == VAL_BOOLEAN)
+        else if (v.type == C_BOOLEAN)
             printf(" [%s]", v.b == true ? "true" : "false");
-        else if (v.type == VAL_NAN)
+        else if (v.type == C_NAN)
             printf(" [NaN]");
-        else if (v.type == VAL_NIL)
+        else if (v.type == C_NIL)
             printf(" [nil]");
-        else if (v.type == VAL_OBJ)
-        {
-            GCObject* obj = (GCObject*) v.obj;
-            if (obj->objType == OBJ_STRING)
-            {
-                ObjString* string = (ObjString*) obj;
-                printf(" ['%.*s']", string->length, string->chars);
-            }
-
-        }
+        else if (v.type == C_STRING)
+            printf(" [%.*s]", v.string.length, v.string.chars);
 
     }
     else if (op == OP_LOAD_VAR)

@@ -29,6 +29,9 @@ typedef enum
     EXPR_BINARY,
     EXPR_UNARY,
     EXPR_LITERAL,
+    EXPR_LIST,
+    EXPR_DICT,
+    EXPR_ENTRY,
     EXPR_NAME,
     EXPR_PREFIX,
     EXPR_POSTFIX,
@@ -90,6 +93,35 @@ typedef struct
 
     Token value;
 } LiteralExpr;
+
+typedef struct
+{
+    Expr expr;
+
+    Expr** elements;
+    int count;
+    //int capacity;
+    Expr* capacity;
+    bool fixed;
+} LiteralListExpr;
+
+typedef struct
+{
+    Expr expr;
+
+    Expr* key;
+    Expr* value;
+} Entry;
+
+typedef struct
+{
+    Expr expr;
+
+    Entry* entries;
+    int count;
+    //int capacity;
+    bool fixed;
+} LiteralDictExpr;
 
 // Nodo base de las sentencias del cual todas las SENTENCIAS 'heredan'
 

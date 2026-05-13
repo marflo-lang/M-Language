@@ -187,7 +187,7 @@ static Source* read_file(const char* path)
     {
         printErr("No se pudo abrir el archivo", "CLI", 3);
         fclose(file);
-        free(buffer);
+        //free(buffer);
         exit(1);
     }
 
@@ -198,7 +198,7 @@ static Source* read_file(const char* path)
     if (s->length != read_size)
     {
         printErr("Lectura incompleta del archivo", "CLI", 3);
-        free(buffer);
+        //free(buffer);
         fclose(file);
         exit(1);
     }
@@ -213,10 +213,6 @@ static Source* read_file(const char* path)
 int main(void)
 {
     setlocale(LC_ALL, "spanish");
-    //printErr("prueba de error", "CLI", 3);
-    //printWarn("prueba de warning", "CLI", 3);
-    //printTrace("prueba de stack trace", "CLI", 3);
-
     //char input[] = "-- typechecker 2, optimizer 5, sources/test.m";
     //char input[] = "-- typechecker 2, sources/test.m";
     //char input[] = "-- optimizer 5, sources/test.m";
@@ -231,21 +227,19 @@ int main(void)
         /*
         ========== CLI ==========
         */
-        //printf("Ok.\n");
-        //printf("Typechecker level: %d\n", config.typechecker_level);
-        //printf("Optimizer lever: %d\n", config.optimizer_level);
         Source* s = read_file(config.script_path);
 
 #if (defined(DEBUG) && DEBUG == 1) && (defined(CLI_DEBUG) && CLI_DEBUG == 1)
         // Debug CLI
+        printf("===== CLI DEBUG =====\n");
+        printf("----- Configs -----\n");
+        printf("Typechecker level: %d\n", config.typechecker_level);
+        printf("Optimizer lever: %d\n", config.optimizer_level);
         printf("Script: %s\n", config.script_path);
-        printf("src %s\n", s->src);
-        printf("length %zd\n", s->length);
+        printf("src: `%s`\n", s->src);
+        printf("length: %zd\n", s->length);
+        printf("===== END CLI DEBUG =====\n");
 #endif
-        /*for (int i = 0; i <= s->length; i++)
-        {
-            printf("c = %c, d = %d\n", s->src[i], s->src[i]);
-        }*/
 
         /*
         ========== Lexer ==========
@@ -290,13 +284,11 @@ int main(void)
         /*
         ========== Code Generator ==========
         */
-        //printf("enter codegen\n");
         CodeGen* G = generator_init(s->src, config.script_path, &C->ir, &C->constants);
-        //printf("enter bytecode\n");
         Chunk* mainChunk = generate_bydecode(G);
 
 #if (defined(DEBUG) && DEBUG == 1) && (defined(CODEGEN_DEBUG) && CODEGEN_DEBUG == 1)
-        codegen_print(G);
+        //codegen_print(G);
 #endif 
 
         clock_t endCompile = clock();
@@ -307,17 +299,10 @@ int main(void)
         */
 
         clock_t startRun = clock();
-        //printf("enter vm\n");
         vm_execute(mainChunk, config.script_path);
 
         clock_t endRun = clock();
         printf("The time it took to run the program is %f seconds\n", (double)(endRun - startRun) / CLOCKS_PER_SEC);
-
-
-
-        //compilerError("Esto es una prueba %s, probando %d, bye %c", "test", locationCNum(1, 2, 3, 4, 5, 6), "prueba123456", 58, 'M');
-        //compilerError("Variable '%.*s' has not yet been declared. Consider declaring it before using it", "test2", locationCNum(1, 2, 3, 4, 5, 6), 5, &s->src[2]);
-        //*/
         
         //free(Tokens);
         //free(L);
