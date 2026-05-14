@@ -837,6 +837,20 @@ static void print_ir(Compiler* C, int i)
         printf("IR_GT R%d R%d R%d", ir.a, ir.b, ir.c);
     else if (ir.op == IR_GTE)
         printf("IR_GTE R%d R%d R%d", ir.a, ir.b, ir.c);
+    else if (ir.op == IR_CREATE_LIST)
+        printf("IR_CREATE_LIST R%d R%d R%d", ir.a, ir.b, ir.c);
+    else if (ir.op == IR_SET_LIST)
+        printf("IR_SET_LIST R%d R%d R%d", ir.a, ir.b, ir.c);
+    else if (ir.op == IR_PUSH_LIST)
+    printf("IR_PUSH_LIST R%d R%d", ir.a, ir.b);
+    else if (ir.op == IR_GET_LIST)
+    printf("IR_GET_LIST R%d R%d R%d", ir.a, ir.b, ir.c);
+    else if (ir.op == IR_CREATE_DICT)
+    printf("IR_CREATE_DICT R%d R%d R%d", ir.a, ir.b, ir.c);
+    else if (ir.op == IR_SET_DICT)
+    printf("IR_SET_DICT R%d R%d R%d", ir.a, ir.b, ir.c);
+    else if (ir.op == IR_GET_DICT)
+        printf("IR_GET_DICT R%d R%d R%d", ir.a, ir.b, ir.c);
     else if (ir.op == IR_JUMP)
         printf("IR_JUMP L%d", ir.b);
     else if (ir.op == IR_JUMP_IF_FALSE)

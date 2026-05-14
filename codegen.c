@@ -190,6 +190,55 @@ Chunk* generate_bydecode(CodeGen* G)
                 break;
             }
 
+            case IR_CREATE_LIST:
+            {
+                emit(G, CREATE_ABC(OP_CREATE_LIST, ir->a, ir->b, ir->c), loc);
+
+                break;
+            }
+
+            case IR_SET_LIST:
+            {
+                emit(G, CREATE_ABC(OP_SET_LIST, ir->a, ir->b, ir->c), loc);
+
+                break;
+            }
+
+            case IR_PUSH_LIST:
+            {
+                emit(G, CREATE_ABx(OP_PUSH_LIST, ir->a, ir->b), loc);
+
+                break;
+            }
+
+            case IR_GET_LIST:
+            {
+                emit(G, CREATE_ABC(OP_GET_LIST, ir->a, ir->b, ir->c), loc);
+
+                break;
+            }
+
+            case IR_CREATE_DICT:
+            {
+                emit(G, CREATE_ABC(OP_CREATE_DICT, ir->a, ir->b, ir->c), loc);
+
+                break;
+            }
+
+            case IR_SET_DICT:
+            {
+                emit(G, CREATE_ABC(OP_SET_DICT, ir->a, ir->b, ir->c), loc);
+
+                break;
+            }
+
+            case IR_GET_DICT:
+            {
+                emit(G, CREATE_ABC(OP_GET_DICT, ir->a, ir->b, ir->c), loc);
+
+                break;
+            }
+
             case IR_JUMP:
             {
                 int offset = ir->b - i - 1;
@@ -295,6 +344,20 @@ static void print_bytecode(CodeGen* G, int i)
         printf("GT R%d R%d R%d", GET_A(inst), GET_B(inst), GET_C(inst));
     else if (op == OP_GTE)
         printf("GTE R%d R%d R%d", GET_A(inst), GET_B(inst), GET_C(inst));
+    else if (op == OP_CREATE_LIST)
+        printf("CREATELIST R%d R%d R%d", GET_A(inst), GET_B(inst), GET_C(inst));
+    else if (op == OP_SET_LIST)
+        printf("SETLIST R%d R%d R%d", GET_A(inst), GET_B(inst), GET_C(inst));
+    else if (op == OP_PUSH_LIST)
+        printf("PUSHLIST R%d R%d", GET_A(inst), GET_Bx(inst));
+    else if (op == OP_GET_LIST)
+        printf("GETLIST R%d R%d R%d", GET_A(inst), GET_B(inst), GET_C(inst));
+    else if (op == OP_CREATE_DICT)
+        printf("CREATEDICT R%d R%d R%d", GET_A(inst), GET_B(inst), GET_C(inst));
+    else if (op == OP_SET_DICT)
+        printf("SETDICT R%d R%d R%d", GET_A(inst), GET_B(inst), GET_C(inst));
+    else if (op == OP_GET_DICT)
+        printf("GETDICT R%d R%d R%d", GET_A(inst), GET_B(inst), GET_C(inst));
     else if (op == OP_JUMP)
         printf("JUMP %d", GET_sBx(inst));
     else if (op == OP_JUMP_IF_FALSE)

@@ -35,6 +35,7 @@ typedef enum
     PREC_POWER, // ^
     PREC_UNARY, // not, -
     PREC_POSTFIX, // ++, --
+    PREC_ACCESS, // ., [, {, (
     PREC_PRIMARY
 } Precedence;
 

@@ -30,7 +30,7 @@ typedef enum
 {
     OBJ_STRING,
     OBJ_LIST,
-    OBJ_DICTIONARY
+    OBJ_DICTIONARY,
 } ObjType;
 
 typedef struct GCObject
@@ -51,6 +51,36 @@ typedef struct
 
     uint32_t hash;
 } ObjString;
+
+typedef struct
+{
+    GCObject gc;
+
+    int length;
+    int capacity;
+
+    bool fixed;
+
+    Value* values;
+} ObjList;
+
+typedef struct
+{
+    Value key;
+    Value value;
+} DictEntry;
+
+typedef struct
+{
+    GCObject gc;
+
+    int count;
+    int capacity;
+
+    bool fixed;
+
+    DictEntry* entries;
+} ObjDict;
 
 typedef struct Value
 {
@@ -100,7 +130,28 @@ inline const char* svalue(Value o)
             return string->chars;
         }
     }
+
+    return NULL;
 }
+
+//inline Value dictvalue(Value o, Value key)
+//{
+//    if (o.type == VAL_OBJ)
+//    {
+//        GCObject* obj = (GCObject*) (o.obj);
+//
+//        if (obj->objType == OBJ_DICTIONARY)
+//        {
+//            ObjDict* dict = (ObjDict*) obj;
+//
+//            for (int i = 0; i < dict->count; i++)
+//            {
+//                if (dict->entries[i].key)
+//                    token_e
+//            }
+//        }
+//    }
+//}
 //#define svalue(o)   (o).string.chars
 
 inline size_t slenvalue(Value o)

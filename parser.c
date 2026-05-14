@@ -57,7 +57,7 @@ static void print_stmt(Parser* P, Stmt* stmt, const char* prefix, bool isLast);
 
 
 ParserRule rules[] = {
-    // int, float, string, boolean, nil,  identifier, (, [
+    // int, float, string, boolean, nil,  identifier, (, [, {
     [M_V_INT] = {parser_int, NULL, PREC_NONE},
     [M_V_FLOAT] = {parser_float, NULL, PREC_NONE},
     [M_V_MALFORMED_NUMBER] = {parser_expr_error, NULL, PREC_NONE},
@@ -67,10 +67,10 @@ ParserRule rules[] = {
     [M_V_FALSE] = {parser_literal, NULL, PREC_NONE},
     [M_V_NIL] = {parser_literal, NULL, PREC_NONE},
     [M_V_IDENTIFIER] = {parser_identifier, NULL, PREC_NONE},
-    [M_LPAREN] = {parser_grouping, parser_grouping, PREC_NONE},
-    [M_LBRAKET] = {parser_list, NULL, PREC_POSTFIX},
-    [M_LBRACE] = {parser_dict, NULL, PREC_POSTFIX},
-    [M_FIXED] = {parser_list, NULL, PREC_POSTFIX},
+    [M_LPAREN] = {parser_grouping, parser_grouping, PREC_ACCESS},
+    [M_LBRAKET] = {parser_list, NULL, PREC_ACCESS},
+    [M_LBRACE] = {parser_dict, NULL, PREC_ACCESS},
+    [M_FIXED] = {parser_list, NULL, PREC_ACCESS},
 
     // <>
     [M_CONCAT] = {NULL, parser_binary, PREC_CONCAT},
