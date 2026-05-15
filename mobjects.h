@@ -134,6 +134,24 @@ inline const char* svalue(Value o)
     return NULL;
 }
 
+inline Value listvalue(Value o, int pos)
+{
+    if (o.type == VAL_OBJ)
+    {
+        GCObject* obj = (GCObject*) (o.obj);
+        
+        if (obj->objType == OBJ_LIST)
+        {
+            ObjList* list = (ObjList*) obj;
+        
+            if (pos > list->length)
+                return (Value) { .type = VAL_NAN, .i = 0 };
+            else
+                return list->values[pos - 1];
+        }
+    }
+}
+
 //inline Value dictvalue(Value o, Value key)
 //{
 //    if (o.type == VAL_OBJ)
@@ -168,6 +186,21 @@ inline size_t slenvalue(Value o)
         }
     }
 }
+
+inline size_t listlenvalue(Value o)
+{
+    if (o.type == VAL_OBJ)
+    {
+        GCObject* obj = (GCObject*)(o.obj);
+
+        if (obj->objType == OBJ_LIST)
+        {
+            ObjList* list = (ObjList*)obj;
+
+            return list->length;
+        }
+    }
+}
 //#define slenvalue(o)    (o).string.length
 
 /* macros of types */
@@ -183,6 +216,21 @@ inline bool isstring(Value o)
         GCObject* obj = (GCObject*)(o.obj);
 
         if (obj->objType == OBJ_STRING)
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+inline bool islist(Value o)
+{
+    if (o.type == VAL_OBJ)
+    {
+        GCObject* obj = (GCObject*)(o.obj);
+
+        if (obj->objType == OBJ_LIST)
         {
             return true;
         }
@@ -213,6 +261,31 @@ inline void setstring(Value* o, const char* str, int len)
     
     o->type = VAL_OBJ;
     o->obj = (GCObject*) string;
+}
+
+inline void setlistvalue(Value* o, Value element)
+{
+    ObjList* list = (ObjList*) o->obj;
+
+    if (list->length > list->capacity)
+    {
+        if (list->fixed)
+            printf("Error fixed\n");
+        else
+
+        {
+            list->capacity = (list->capacity < 8) ? 8 : list->capacity * 2;
+            Value* newData = realloc(list->values, sizeof(Value) * list->capacity);
+            if (newData == NULL)
+            {
+                memoryCrash("List Realloc");
+                exit(1);
+            }
+
+            list->values = newData;
+        }
+    }
+    list->values[list->length++] = &element;
 }
 //#define setstring(o, str, len)  (o).type = VAL_STRING; (o).string.chars = (str); (o).string.length = (len)
 #define setnil(o)   (o).type = VAL_NIL
