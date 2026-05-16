@@ -1,11 +1,13 @@
+
+#include "lexer.h"
+#include "../utils/err.h"
+
 #include <stdio.h>
 #include <stdbool.h>
 #include <malloc.h>
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
-#include "lexer.h"
-#include "err.h"
 
 static void consume(Lexer* L)
 {

@@ -2,8 +2,8 @@
 
 #include "compiler.h"
 #include "mconfig.h"
-#include "mobjects.h"
-#include "vm.h"
+#include "../vm/mobjects.h"
+#include "../vm/vm.h"
 
 typedef enum
 {

@@ -1,7 +1,9 @@
 #pragma once
+
+#include "m.h"
+
 #include <string.h>
 #include <stdint.h>
-#include "m.h"
 
 typedef struct
 {

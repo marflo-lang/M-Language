@@ -2,11 +2,12 @@
 #ifndef MOBJECTS_H
 #define MOBJECTS_H
 
+#include "m.h"
+#include "../utils/err.h"
+
 #include <stdbool.h>
 #include <malloc.h>
 #include <stdlib.h>
-#include "m.h"
-#include "err.h"
 
 typedef struct VM VM;
 

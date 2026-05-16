@@ -1,6 +1,6 @@
 #pragma once
-#include "ast.h"
-#include "mobjects.h"
+#include "../frontend/ast.h"
+#include "../vm/mobjects.h"
 
 #include <stdint.h>
 #include <stdbool.h>

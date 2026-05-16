@@ -15,69 +15,72 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="vm.c">
+    <ClCompile Include="src\frontend\lexer.c">
       <Filter>Archivos de origen</Filter>
     </ClCompile>
-    <ClCompile Include="cli.c">
+    <ClCompile Include="src\frontend\parser.c">
       <Filter>Archivos de origen</Filter>
     </ClCompile>
-    <ClCompile Include="err.c">
+    <ClCompile Include="src\backend\codegen.c">
       <Filter>Archivos de origen</Filter>
     </ClCompile>
-    <ClCompile Include="lexer.c">
+    <ClCompile Include="src\backend\compiler.c">
       <Filter>Archivos de origen</Filter>
     </ClCompile>
-    <ClCompile Include="parser.c">
+    <ClCompile Include="src\cli\cli.c">
       <Filter>Archivos de origen</Filter>
     </ClCompile>
-    <ClCompile Include="allocator.c">
+    <ClCompile Include="src\utils\allocator.c">
       <Filter>Archivos de origen</Filter>
     </ClCompile>
-    <ClCompile Include="compiler.c">
+    <ClCompile Include="src\utils\err.c">
       <Filter>Archivos de origen</Filter>
     </ClCompile>
-    <ClCompile Include="codegen.c">
+    <ClCompile Include="src\vm\mobjects.c">
       <Filter>Archivos de origen</Filter>
     </ClCompile>
-    <ClCompile Include="mobjects.c">
+    <ClCompile Include="src\vm\vm.c">
       <Filter>Archivos de origen</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="m.h">
+    <ClInclude Include="src\frontend\ast.h">
       <Filter>Archivos de encabezado</Filter>
     </ClInclude>
-    <ClInclude Include="mconfig.h">
+    <ClInclude Include="src\frontend\lexer.h">
       <Filter>Archivos de encabezado</Filter>
     </ClInclude>
-    <ClInclude Include="mobjects.h">
+    <ClInclude Include="src\frontend\parser.h">
       <Filter>Archivos de encabezado</Filter>
     </ClInclude>
-    <ClInclude Include="vm.h">
+    <ClInclude Include="src\backend\codegen.h">
       <Filter>Archivos de encabezado</Filter>
     </ClInclude>
-    <ClInclude Include="cli.h">
+    <ClInclude Include="src\backend\compiler.h">
       <Filter>Archivos de encabezado</Filter>
     </ClInclude>
-    <ClInclude Include="err.h">
+    <ClInclude Include="src\cli\cli.h">
       <Filter>Archivos de encabezado</Filter>
     </ClInclude>
-    <ClInclude Include="lexer.h">
+    <ClInclude Include="src\utils\allocator.h">
       <Filter>Archivos de encabezado</Filter>
     </ClInclude>
-    <ClInclude Include="parser.h">
+    <ClInclude Include="src\utils\err.h">
       <Filter>Archivos de encabezado</Filter>
     </ClInclude>
-    <ClInclude Include="allocator.h">
+    <ClInclude Include="src\utils\print.h">
       <Filter>Archivos de encabezado</Filter>
     </ClInclude>
-    <ClInclude Include="print.h">
+    <ClInclude Include="src\vm\mobjects.h">
       <Filter>Archivos de encabezado</Filter>
     </ClInclude>
-    <ClInclude Include="compiler.h">
+    <ClInclude Include="src\vm\vm.h">
       <Filter>Archivos de encabezado</Filter>
     </ClInclude>
-    <ClInclude Include="codegen.h">
+    <ClInclude Include="include\m.h">
+      <Filter>Archivos de encabezado</Filter>
+    </ClInclude>
+    <ClInclude Include="include\mconfig.h">
       <Filter>Archivos de encabezado</Filter>
     </ClInclude>
   </ItemGroup>

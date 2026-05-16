@@ -1,17 +1,18 @@
+
+#include "cli.h"
+#include "../utils/err.h"
+#include "../frontend/lexer.h"
+#include "../frontend/parser.h"
+#include "../backend/compiler.h"
+#include "../backend/codegen.h"
+#include "../utils/print.h"
+
 #include <stdio.h>
-//#include <string.h>
 #include <stdlib.h>
 #include <ctype.h>
 #include <stdbool.h>
 #include <time.h>
 #include <locale.h>
-#include "err.h"
-#include "cli.h"
-#include "lexer.h"
-#include "parser.h"
-#include "compiler.h"
-#include "print.h"
-#include "codegen.h"
 
 static char* trim_left(char* str)
 {

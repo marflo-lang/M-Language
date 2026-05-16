@@ -1,10 +1,11 @@
 #pragma once
-//#include <stdbool.h>
-#include <stdio.h>
+
+#include "m.h"
 #include "lexer.h"
 #include "ast.h"
-#include "allocator.h"
-#include "m.h"
+#include "../utils/allocator.h"
+
+#include <stdio.h>
 
 typedef struct
 {

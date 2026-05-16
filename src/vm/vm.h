@@ -2,7 +2,7 @@
 
 #include "mconfig.h"
 #include "mobjects.h"
-#include "compiler.h"
+#include "../backend/compiler.h"
 
 typedef struct Chunk
 {

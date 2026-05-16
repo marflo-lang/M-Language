@@ -1,6 +1,6 @@
 
-#include "err.h"
-#include "codegen.h"
+#include "../utils/err.h"
+#include "../backend/codegen.h"
 #include "vm.h"
 
 #include <stdio.h>

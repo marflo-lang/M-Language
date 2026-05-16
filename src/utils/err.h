@@ -1,6 +1,7 @@
 #pragma once
-#include "lexer.h"
+#include "../frontend/lexer.h"
 #include "print.h"
+
 #include <stdio.h>
 #include <stdarg.h>
 #ifdef _WIN32

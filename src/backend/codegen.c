@@ -1,7 +1,7 @@
 
 #include "codegen.h"
-#include "err.h"
-#include "vm.h"
+#include "../utils/err.h"
+#include "../vm/vm.h"
 
 #include <malloc.h>
 
