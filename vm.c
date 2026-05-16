@@ -19,6 +19,8 @@ static const char* getValueTypeName(Value v)
         return "float";
     else if (isstring(v))
         return "string";
+    else if (islist(v))
+        return "list";
     else if (isboolean(v))
         return "boolean";
     else if (isnil(v))
@@ -98,7 +100,9 @@ static void vm_run(VM* vm)
                 }
                 else if (kbx.type == C_STRING)
                 {
-                    setstring(&R[a], kbx.string.chars, kbx.string.length);
+                    //setstring(&R[a], kbx.string.chars, kbx.string.length);
+                    R[a].type = VAL_OBJ;
+                    R[a].obj = allocate_string(vm, kbx.string.chars, kbx.string.length);
                 }
 
                 break;
@@ -468,7 +472,11 @@ static void vm_run(VM* vm)
                     memcpy(result + slenvalue(R[b]), svalue(R[c]), slenvalue(R[c]));
                     result[newLength] = '\0';
 
-                    setstring(&R[a], result, newLength);
+                    //setstring(&R[a], result, newLength);
+                    R[a].type = VAL_OBJ;
+                    R[a].obj = allocate_string(vm, result, newLength);
+
+                    free(result);
 
                     printf("R[a] = '%.*s'\n", ((ObjString*)R[a].obj)->length, ((ObjString*)R[a].obj)->chars);
 
@@ -576,6 +584,81 @@ static void vm_run(VM* vm)
                     R[a].type = R[c].type;
                     R[a] = R[c];
                 }
+
+                break;
+            }
+
+            case OP_CREATE_LIST:
+            {
+                uint8_t a = GET_A(instr);
+                int8_t b = GET_B(instr);
+                uint8_t c = GET_C(instr);
+
+                GCObject obj = {.marked = false, .next = NULL, .objType = OBJ_LIST};
+
+                ObjList* list = malloc(sizeof(ObjList));
+                if (list == NULL)
+                {
+                    memoryCrash("List Create");
+                    exit(1);
+                }
+
+                list->capacity = (b > -1) ? R[b].i : -1;
+                list->fixed = c;
+                list->length = 0;
+                list->values = NULL;
+                list->gc = obj;
+
+
+                R[a] = (Value) {.type = VAL_OBJ, .obj = (GCObject*) list};
+
+                break;
+            }
+
+            case OP_SET_LIST:
+            {
+                uint8_t a = GET_A(instr);
+                uint8_t b = GET_B(instr);
+                uint8_t c = GET_C(instr);
+
+                if (!islist(R[a]))
+                    cannotAddElementNotList(vm->name, chunk->lines[i], getValueTypeName(R[a]));
+                
+
+                break;
+            }
+
+            case OP_PUSH_LIST:
+            {
+
+
+                break;
+            }
+
+            case OP_GET_LIST:
+            {
+
+
+                break;
+            }
+
+            case OP_CREATE_DICT:
+            {
+
+
+                break;
+            }
+
+            case OP_SET_DICT:
+            {
+
+
+                break;
+            }
+
+            case OP_GET_DICT:
+            {
+
 
                 break;
             }
@@ -892,6 +975,9 @@ void vm_execute(Chunk* main_chunk, const char* name)
     vm->next_gc = 1024 * 15;
     vm->globals = NULL;
     vm->gcEnable = false;
+    vm->strings.capacity = 0;
+    vm->strings.count = 0;
+    vm->strings.entries = NULL;
 
     // frame inicial
     CallFrame* frame = &vm->frames[vm->frame_count++];

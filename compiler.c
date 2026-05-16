@@ -275,7 +275,7 @@ static int symbol_define(Compiler* C, SymbolTable* T, Token name, bool isConst, 
     if (T->count >= T->capacity)
     {
         T->capacity = T->capacity < 8 ? 8 : T->capacity * 2;
-        const char** newData = realloc(T->data, sizeof(char*) * T->capacity);
+        Symbol* newData = realloc(T->data, sizeof(Symbol*) * T->capacity);
 
         if (newData == NULL)
         {
@@ -389,6 +389,26 @@ int compiler_expr(Compiler* C, Expr* expr, int target)
             int k = const_add(&C->constants, v);
 
             ir_emit(&C->ir, IR_LOAD_CONST, r, k, 0, literal->expr.base.location);
+            return r;
+        }
+        case EXPR_LIST:
+        {
+            LiteralListExpr* list = (LiteralListExpr*) expr;
+
+            int r = (target > -1) ? target : alloc_reg(C);
+
+            int capacity = -1;
+            if (list->capacity != NULL)
+                capacity = compiler_expr(C, list->capacity, -1);
+
+            ir_emit(&C->ir, IR_CREATE_LIST, r, capacity, list->fixed, list->expr.base.location);
+
+            for (int i = 0; i < list->count; i++)
+            {
+                int element = compiler_expr(C, list->elements[i], -1);
+                ir_emit(C, IR_SET_LIST, r, i, element, list->elements[i]->base.location);
+            }
+
             return r;
         }
         case EXPR_NAME:
@@ -822,9 +842,9 @@ static void print_ir(Compiler* C, int i)
     else if (ir.op == IR_NOT)
         printf("IR_NOT R%d R%d", ir.a, ir.b);
     else if (ir.op == IR_OR)
-        printf("IR_OR R%d R%d R%d", ir.a, ir.b ir.c);
+        printf("IR_OR R%d R%d R%d", ir.a, ir.b, ir.c);
     else if (ir.op == IR_AND)
-        printf("IR_AND R%d R%d R%d", ir.a, ir.b ir.c);
+        printf("IR_AND R%d R%d R%d", ir.a, ir.b, ir.c);
     else if (ir.op == IR_EQ)
         printf("IR_EQ R%d R%d R%d", ir.a, ir.b, ir.c);
     else if (ir.op == IR_NEQ)
@@ -838,9 +858,9 @@ static void print_ir(Compiler* C, int i)
     else if (ir.op == IR_GTE)
         printf("IR_GTE R%d R%d R%d", ir.a, ir.b, ir.c);
     else if (ir.op == IR_CREATE_LIST)
-        printf("IR_CREATE_LIST R%d R%d R%d", ir.a, ir.b, ir.c);
+        printf("IR_CREATE_LIST R%d R%d %s", ir.a, ir.b, (ir.c == true) ? "true" : "false");
     else if (ir.op == IR_SET_LIST)
-        printf("IR_SET_LIST R%d R%d R%d", ir.a, ir.b, ir.c);
+        printf("IR_SET_LIST R%d %d R%d", ir.a, ir.b, ir.c);
     else if (ir.op == IR_PUSH_LIST)
     printf("IR_PUSH_LIST R%d R%d", ir.a, ir.b);
     else if (ir.op == IR_GET_LIST)

@@ -33,4 +33,4 @@ void invalidOperandsError(const char* name, int line, const char* op, const char
 void arithmeticError(const char* name, int line);
 void memoryError(const char* name, int line);
 void unknownType(const char* name, int line, int type);
-
+void cannotAddElementNotList(const char* name, int line, const char* type);

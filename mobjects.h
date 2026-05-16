@@ -1,10 +1,14 @@
 #pragma once
+#ifndef MOBJECTS_H
+#define MOBJECTS_H
 
 #include <stdbool.h>
 #include <malloc.h>
 #include <stdlib.h>
 #include "m.h"
 #include "err.h"
+
+typedef struct VM VM;
 
 typedef enum
 {
@@ -37,7 +41,7 @@ typedef struct GCObject
 {
     ObjType objType;
 
-    bool market;
+    bool marked;
 
     struct GCObject* next;
 } GCObject;
@@ -51,6 +55,20 @@ typedef struct
 
     uint32_t hash;
 } ObjString;
+
+
+typedef struct Value
+{
+    CValueType type;
+
+    union
+    {
+        int i;
+        double f;
+        bool b;
+        GCObject* obj;
+    };
+} Value;
 
 typedef struct
 {
@@ -82,19 +100,6 @@ typedef struct
     DictEntry* entries;
 } ObjDict;
 
-typedef struct Value
-{
-    CValueType type;
-
-    union
-    {
-        int i;
-        double f;
-        bool b;
-        GCObject* obj;
-    };
-} Value;
-
 typedef struct
 {
     ConstantType type;
@@ -111,6 +116,19 @@ typedef struct
         } string;
     };
 } Constant;
+
+typedef struct
+{
+    ObjString* key;
+} StringEntry;
+
+typedef struct
+{
+    int count;
+    int capacity;
+
+    StringEntry* entries;
+} StringTable;
 
 /* macros to access values */
 #define ttype(o)    ((o).type)
@@ -244,24 +262,25 @@ inline bool islist(Value o)
 #define setint(o, in)    (o).type = VAL_INT; (o).i = (in)
 #define setfloat(o, fl)  (o).type = VAL_FLOAT; (o).f = (fl)
 #define setboolean(o, bo)    (o).type = VAL_BOOLEAN; (o).b = (bo)
-inline void setstring(Value* o, const char* str, int len)
-{
-    ObjString* string = malloc(sizeof(ObjString));
-    if (string == NULL)
-    {
-        memoryCrash("Assign String");
-        exit(1);
-    }
-    string->gc.objType = OBJ_STRING;
-    string->gc.market = false;
-    string->gc.next = NULL;
-    string->chars = str;
-    string->length = len;
-    string->hash = "";
-    
-    o->type = VAL_OBJ;
-    o->obj = (GCObject*) string;
-}
+ObjString* allocate_string(VM* vm, const char* text, int length);
+//inline void setstring(Value* o, const char* str, int len)
+//{
+//    ObjString* string = malloc(sizeof(ObjString));
+//    if (string == NULL)
+//    {
+//        memoryCrash("Assign String");
+//        exit(1);
+//    }
+//    string->gc.objType = OBJ_STRING;
+//    string->gc.marked = false;
+//    string->gc.next = NULL;
+//    string->chars = str;
+//    string->length = len;
+//    string->hash = "";
+//    
+//    o->type = VAL_OBJ;
+//    o->obj = (GCObject*) string;
+//}
 
 inline void setlistvalue(Value* o, Value element)
 {
@@ -285,7 +304,7 @@ inline void setlistvalue(Value* o, Value element)
             list->values = newData;
         }
     }
-    list->values[list->length++] = &element;
+    list->values[list->length++] = element;
 }
 //#define setstring(o, str, len)  (o).type = VAL_STRING; (o).string.chars = (str); (o).string.length = (len)
 #define setnil(o)   (o).type = VAL_NIL
@@ -296,4 +315,4 @@ inline void setlistvalue(Value* o, Value element)
 /* macro to check if a value is false */
 #define isfalse(o)  (ismnan(o) || isnil(o) || (isboolean(o) && bvalue(o) == false))
 
-
+#endif

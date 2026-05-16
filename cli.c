@@ -288,7 +288,7 @@ int main(void)
         Chunk* mainChunk = generate_bydecode(G);
 
 #if (defined(DEBUG) && DEBUG == 1) && (defined(CODEGEN_DEBUG) && CODEGEN_DEBUG == 1)
-        //codegen_print(G);
+        codegen_print(G);
 #endif 
 
         clock_t endCompile = clock();

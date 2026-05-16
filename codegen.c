@@ -345,9 +345,9 @@ static void print_bytecode(CodeGen* G, int i)
     else if (op == OP_GTE)
         printf("GTE R%d R%d R%d", GET_A(inst), GET_B(inst), GET_C(inst));
     else if (op == OP_CREATE_LIST)
-        printf("CREATELIST R%d R%d R%d", GET_A(inst), GET_B(inst), GET_C(inst));
+        printf("CREATELIST R%d R%d %s", GET_A(inst), (int8_t) GET_B(inst), (GET_C(inst) == true) ? "true" : "false");
     else if (op == OP_SET_LIST)
-        printf("SETLIST R%d R%d R%d", GET_A(inst), GET_B(inst), GET_C(inst));
+        printf("SETLIST R%d %d R%d", GET_A(inst), GET_B(inst), GET_C(inst));
     else if (op == OP_PUSH_LIST)
         printf("PUSHLIST R%d R%d", GET_A(inst), GET_Bx(inst));
     else if (op == OP_GET_LIST)

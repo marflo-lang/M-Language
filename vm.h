@@ -24,7 +24,7 @@ typedef struct
     Value* registers; // array of registers
 }CallFrame;
 
-typedef struct
+struct VM
 {
     CallFrame frames[MAX_FRAMES];
     int frame_count; // amount frames active
@@ -39,7 +39,8 @@ typedef struct
     size_t next_gc;
     Value* globals;
     bool gcEnable;
-}VM;
+    StringTable strings;
+};
 
 
 Chunk* chunk_new();

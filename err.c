@@ -192,3 +192,7 @@ void unknownType(const char* name, int line, int type)
     runtimeError("InternalError: Unknown Type; Number Enum Type %d", name, line, type);
 }
 
+void cannotAddElementNotList(const char* name, int line, const char* type)
+{
+    runtimeError("AssignmentError: Cannot assign an item to a non-list; Got type %s", name, line, type);
+}
