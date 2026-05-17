@@ -122,14 +122,14 @@ Chunk* generate_bydecode(CodeGen* G)
 
             case IR_UNM:
             {
-                emit(G, CREATE_ABC(OP_UNM, ir->a, ir->b, ir->c), loc);
+                emit(G, CREATE_ABx(OP_UNM, ir->a, ir->b), loc);
 
                 break;
             }
 
             case IR_NOT:
             {
-                emit(G, CREATE_ABC(OP_NOT, ir->a, ir->b, ir->c), loc);
+                emit(G, CREATE_ABx(OP_NOT, ir->a, ir->b), loc);
 
                 break;
             }

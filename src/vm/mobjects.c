@@ -131,13 +131,12 @@ static ObjString* find_interned_string(VM* vm, const char* text, int length, uin
 
 ObjString* allocate_string(VM* vm, const char* text, int length)
 {
-    printf("Allocate\n");
     uint32_t hash = hash_string(text, length);
 
     ObjString* string = find_interned_string(vm, text, length, hash);
     if (string != NULL)
         return string;
-    printf("Create\n");
+    
     ObjString* obj = (ObjString*) allocate_object(vm, sizeof(ObjString), OBJ_STRING);
     char* chars = malloc(length + 1);
     if (chars == NULL)

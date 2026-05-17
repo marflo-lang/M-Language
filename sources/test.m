@@ -1,7 +1,7 @@
 var x = 0
-
-while x < 10 {
-    var text = "hola"
+var text = ""
+while x < 500 {
+    text <>= "a"
     x++
 }
 

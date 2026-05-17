@@ -182,7 +182,7 @@ static Source* read_file(const char* path)
 
     rewind(file);
 
-    char* buffer = malloc(sizeof(s->length + 1));
+    char* buffer = malloc(s->length + 1);
 
     if (buffer == NULL)
     {

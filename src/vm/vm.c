@@ -478,7 +478,7 @@ static void vm_run(VM* vm)
 
                     free(result);
 
-                    printf("R[a] = '%.*s'\n", ((ObjString*)R[a].obj)->length, ((ObjString*)R[a].obj)->chars);
+                    //printf("R[a] = '%.*s'\n", ((ObjString*)R[a].obj)->length, ((ObjString*)R[a].obj)->chars);
 
                 }
                 else
@@ -693,7 +693,7 @@ static void vm_run(VM* vm)
                     {
                         setboolean(R[a], true);
                     }
-                    else if (ismnan(R[a]))
+                    else if (ismnan(R[b]))
                     {
                         setboolean(R[a], true);
                     }
@@ -716,7 +716,7 @@ static void vm_run(VM* vm)
                 uint8_t b = GET_B(instr);
                 uint8_t c = GET_C(instr);
 
-                if (ttype(R[b]) && ttype(R[c]))
+                if (ttype(R[b]) == ttype(R[c]))
                 {
                     if (isboolean(R[b]))
                     {
@@ -762,7 +762,8 @@ static void vm_run(VM* vm)
                 uint8_t b = GET_B(instr);
                 uint8_t c = GET_C(instr);
 
-                if (R[b].type == R[c].type)
+                //if (R[b].type == R[c].type)
+                if (ttype(R[b]) == ttype(R[c]))
                 {
                     if (isboolean(R[b]))
                     {
