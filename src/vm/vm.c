@@ -594,24 +594,11 @@ static void vm_run(VM* vm)
                 int8_t b = GET_B(instr);
                 uint8_t c = GET_C(instr);
 
-                GCObject obj = {.marked = false, .next = NULL, .objType = OBJ_LIST};
+                if (b > -1 && !isint(R[b]))
+                    typeError(vm->name, chunk->lines[i], "int", getValueTypeName(R[b]));
 
-                ObjList* list = malloc(sizeof(ObjList));
-                if (list == NULL)
-                {
-                    memoryCrash("List Create");
-                    exit(1);
-                }
-
-                list->capacity = (b > -1) ? R[b].i : -1;
-                list->fixed = c;
-                list->length = 0;
-                list->values = NULL;
-                list->gc = obj;
-
-
-                R[a] = (Value) {.type = VAL_OBJ, .obj = (GCObject*) list};
-
+                ObjList* list = allocate_list(vm, 0, (b > -1) ? ivalue(R[b]) : 0, c);
+                set_list(&R[a], list);
                 break;
             }
 

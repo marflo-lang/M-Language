@@ -154,9 +154,197 @@ ObjString* allocate_string(VM* vm, const char* text, int length)
     return obj;
 }
 
-ObjList* allocate_list(VM* vm)
+extern inline bool isstring(Value o)
 {
+    if (o.type == VAL_OBJ)
+    {
+        GCObject* obj = (GCObject*)(o.obj);
 
+        if (obj->objType == OBJ_STRING)
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+extern inline const char* svalue(Value o)
+{
+    GCObject* obj = (GCObject*) (o.obj);
+    ObjString* string = (ObjString*) obj;
+    return string->chars;
+}
+
+extern inline int slenvalue(Value o)
+{
+    GCObject* obj = (GCObject*)(o.obj);
+    ObjString* string = (ObjString*)obj;
+    return string->length;
+}
+
+void resize_list(VM* vm, ObjList* list, int newCapacity, int line)
+{
+    if (list->fixed)
+        cannotResizeList(vm, line);
+
+    if (newCapacity < list->length)
+        resizeFractured(vm->name, line, "list because the new capacity is lower than old length");
+    size_t oldSize = sizeof(Value) * list->capacity;
+    size_t newSize = sizeof(Value) * newCapacity;
+    Value* values = realloc(list->values, newSize);
+    if (values == NULL)
+    {
+        memoryCrash("List Re-Allocation");
+        exit(1);
+    }
+    // pendiente una zona aquí de inicializar con nil los elementos nuevos
+    list->values = values;
+    list->capacity = newCapacity;
+    vm->bytes_allocated += newSize - oldSize;
+}
+
+ObjList* allocate_list(VM* vm, int length, int capacity, bool fixed)
+{
+    ObjList* obj = (ObjList*)allocate_object(vm, sizeof(ObjList), OBJ_LIST);
+
+    obj->length = length;
+    obj->capacity = capacity;
+    obj->fixed = fixed;
+    
+    if (capacity > 0)
+    {
+        obj->values = calloc(capacity, sizeof(Value));
+
+        if (obj->values == NULL)
+        {
+            memoryCrash("List Allocation");
+            exit(1);
+        }
+
+        vm->bytes_allocated += sizeof(Value) * capacity;
+    }
+    else
+    {
+        obj->values = NULL;
+    }
+
+    return obj;
+}
+
+void set_list_element(VM* vm, Value* o, Value element, int pos, int line)
+{
+    ObjList* list = (ObjList*) o->obj;
+
+    if (pos > -1)
+    {
+        if (pos > list->capacity)
+            indexoutofbound(vm->name, line, pos, list->capacity);
+
+        list->values[pos - 1] = element;
+    }
+    else
+    {
+        if (list->length > list->capacity)
+            resize_list(vm, list, list->capacity * 2, line);
+
+        list->values[list->length++] = element;
+    }
+}
+
+extern inline void set_list(Value* a, ObjList* list)
+{
+    a->type = VAL_OBJ;
+    a->obj = (GCObject*) list;
+}
+
+extern inline bool islist(Value o)
+{
+    if (o.type == VAL_OBJ)
+    {
+        GCObject* obj = (GCObject*)(o.obj);
+
+        if (obj->objType == OBJ_LIST)
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+extern inline int listlenvalue(Value o)
+{
+    if (o.type == VAL_OBJ)
+    {
+        GCObject* obj = (GCObject*)(o.obj);
+
+        if (obj->objType == OBJ_LIST)
+        {
+            ObjList* list = (ObjList*)obj;
+
+            return list->length;
+        }
+    }
+}
+
+extern inline Value listvalue(Value o, int pos)
+{
+    GCObject* obj = (GCObject*)(o.obj);
+    ObjList* list = (ObjList*)obj;
+    if (pos > list->length)
+        return (Value) { .type = VAL_NAN, .i = 0 };
+    else
+        return list->values[pos - 1];
+}
+
+void resize_dict(VM* vm, ObjDict* dict, int newCapacity, int line)
+{
+    if (dict->fixed)
+        cannotResizeDict(vm, line);
+
+    if (newCapacity < dict->count)
+        resizeFractured(vm->name, line, "dictionary because the new capacity is lower than old count");
+    size_t oldSize = sizeof(DictEntry) * dict->capacity;
+    size_t newSize = sizeof(DictEntry) * newCapacity;
+    DictEntry* entries = realloc(dict->entries, newSize);
+    if (entries == NULL)
+    {
+        memoryCrash("Dictionary Re-Allocation");
+        exit(1);
+    }
+    // pendiente una zona aquí de inicializar con nil los elementos nuevos
+    dict->entries = entries;
+    dict->capacity = newCapacity;
+    vm->bytes_allocated += newSize - oldSize;
+}
+
+ObjDict* allocate_dict(VM* vm, int count, int capacity, bool fixed)
+{
+    ObjDict* obj = (ObjDict*) allocate_object(vm, sizeof(ObjDict), OBJ_DICTIONARY);
+
+    obj->capacity = capacity;
+    obj->fixed = fixed;
+    obj->count = count;
+
+    if (capacity > 0)
+    {
+        obj->entries = calloc(capacity, sizeof(DictEntry));
+
+        if (obj->entries == NULL)
+        {
+            memoryCrash("Dict Entries Allocation");
+            exit(1);
+        }
+
+        vm->bytes_allocated += sizeof(DictEntry) * capacity;
+    }
+    else
+    {
+        obj->entries = NULL;
+    }
+
+    return obj;
 }
 
 void free_object(VM* vm)

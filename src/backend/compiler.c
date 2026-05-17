@@ -120,22 +120,6 @@ static Constant make_string(const char* src, int offset, int length)
     val.type = C_STRING;
     val.string.chars = src + offset;
     val.string.length = length;
-    //ObjString* string = malloc(sizeof(ObjString));
-    //if (string == NULL)
-    //{
-    //    memoryCrash("Assign String");
-    //    exit(1);
-    //}
-    //string->gc.objType = OBJ_STRING;
-    //string->gc.market = false;
-    //string->gc.next = NULL;
-    //string->chars = src + offset;
-    //string->length = length;
-    //string->hash = "";
-
-    //val.type = VAL_OBJ;
-    //val.obj = string;
-
     return val;
 }
 

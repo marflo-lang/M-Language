@@ -177,6 +177,11 @@ void invalidOperandsError(const char* name, int line, const char* op, const char
     runtimeError("TypeError: Invalid operands '%s' and '%s' for operator '%s'", name, line, type1 != NULL ? type1 : "", type2 != NULL ? type2 : "", op);
 }
 
+void typeError(const char* name, int line, const char* type1, const char* type2)
+{
+    runtimeError("TypeError: Expected '%s', but got '%s'", name, line, type1, type2);
+}
+
 void arithmeticError(const char* name, int line)
 {
     runtimeError("ArithmeticError: Division By Zero", name, line);
@@ -195,4 +200,24 @@ void unknownType(const char* name, int line, int type)
 void cannotAddElementNotList(const char* name, int line, const char* type)
 {
     runtimeError("AssignmentError: Cannot assign an item to a non-list; Got type %s", name, line, type);
+}
+
+void cannotResizeList(const char* name, int line)
+{
+    runtimeError("ResizeListError: Cannot resize a fixed list", name, line);
+}
+
+void cannotResizeDict(const char* name, int line)
+{
+    runtimeError("ResizeDictError: Cannot resize a fixed Dictionary", name, line);
+}
+
+void resizeFractured(const char* name, int line, const char* complement)
+{
+    runtimeError("ResizeFracturedError: Something was wrong when try to resize the %s", name, line, complement);
+}
+
+void indexoutofbound(const char* name, int line, int pos, int capacity)
+{
+    runtimeError("IndexOutOfBoundsError: Tried to index position %d when capacity is %d", name, line, pos, capacity);
 }

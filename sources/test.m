@@ -1,9 +1,12 @@
-var x = 0
-var text = ""
-while x < 500 {
-    text <>= "a"
-    x++
-}
+var x = "hola"
+var y = "mundo"
+var z = "holamundo"
+var n = 0
+if x < y
+    n = 10
+if ((x <> y) == z)
+    while n < 1000000
+        n++
 
 
 

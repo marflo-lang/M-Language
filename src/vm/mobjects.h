@@ -131,45 +131,15 @@ typedef struct
     StringEntry* entries;
 } StringTable;
 
+/* macros to create values */
+
 /* macros to access values */
 #define ttype(o)    ((o).type)
 #define ivalue(o)   (o).i
 #define fvalue(o)   (o).f
 #define bvalue(o)   (o).b
-inline const char* svalue(Value o)
-{
-    if (o.type == VAL_OBJ)
-    {
-        GCObject* obj = (GCObject*)(o.obj);
-
-        if (obj->objType == OBJ_STRING)
-        {
-            ObjString* string = (ObjString*)obj;
-
-            return string->chars;
-        }
-    }
-
-    return NULL;
-}
-
-inline Value listvalue(Value o, int pos)
-{
-    if (o.type == VAL_OBJ)
-    {
-        GCObject* obj = (GCObject*) (o.obj);
-        
-        if (obj->objType == OBJ_LIST)
-        {
-            ObjList* list = (ObjList*) obj;
-        
-            if (pos > list->length)
-                return (Value) { .type = VAL_NAN, .i = 0 };
-            else
-                return list->values[pos - 1];
-        }
-    }
-}
+inline const char* svalue(Value o);
+inline Value listvalue(Value o, int pos);
 
 //inline Value dictvalue(Value o, Value key)
 //{
@@ -191,35 +161,8 @@ inline Value listvalue(Value o, int pos)
 //}
 //#define svalue(o)   (o).string.chars
 
-inline size_t slenvalue(Value o)
-{
-    if (o.type == VAL_OBJ)
-    {
-        GCObject* obj = (GCObject*)(o.obj);
-
-        if (obj->objType == OBJ_STRING)
-        {
-            ObjString* string = (ObjString*)obj;
-
-            return string->length;
-        }
-    }
-}
-
-inline size_t listlenvalue(Value o)
-{
-    if (o.type == VAL_OBJ)
-    {
-        GCObject* obj = (GCObject*)(o.obj);
-
-        if (obj->objType == OBJ_LIST)
-        {
-            ObjList* list = (ObjList*)obj;
-
-            return list->length;
-        }
-    }
-}
+inline int slenvalue(Value o);
+inline int listlenvalue(Value o);
 //#define slenvalue(o)    (o).string.length
 
 /* macros of types */
@@ -228,42 +171,25 @@ inline size_t listlenvalue(Value o)
 #define isint(o)    (ttype(o) == VAL_INT)
 #define isfloat(o)    (ttype(o) == VAL_FLOAT)
 #define isboolean(o)    (ttype(o) == VAL_BOOLEAN)
-inline bool isstring(Value o)
-{
-    if (o.type == VAL_OBJ)
-    {
-        GCObject* obj = (GCObject*)(o.obj);
+inline bool isstring(Value o);
+inline bool islist(Value o);
 
-        if (obj->objType == OBJ_STRING)
-        {
-            return true;
-        }
-    }
-
-    return false;
-}
-
-inline bool islist(Value o)
-{
-    if (o.type == VAL_OBJ)
-    {
-        GCObject* obj = (GCObject*)(o.obj);
-
-        if (obj->objType == OBJ_LIST)
-        {
-            return true;
-        }
-    }
-
-    return false;
-}
 //#define isstring(o)    (ttype(o) == VAL_STRING)
  
 /* macros to set values */
 #define setint(o, in)    (o).type = VAL_INT; (o).i = (in)
 #define setfloat(o, fl)  (o).type = VAL_FLOAT; (o).f = (fl)
 #define setboolean(o, bo)    (o).type = VAL_BOOLEAN; (o).b = (bo)
+// string
 ObjString* allocate_string(VM* vm, const char* text, int length);
+// list
+inline void set_list(Value* a, ObjList* list);
+void set_list_element(VM* vm, Value* o, Value element, int pos, int line);
+ObjList* allocate_list(VM* vm, int length, int capacity, bool fixed);
+void resize_list(VM* vm, ObjList* list, int newCapacity, int line);
+// dict
+ObjDict* allocate_dict(VM* vm, int count, int capacity, bool fixed);
+void resize_dict(VM* vm, ObjDict* dict, int newCapacity, int line);
 //inline void setstring(Value* o, const char* str, int len)
 //{
 //    ObjString* string = malloc(sizeof(ObjString));
@@ -283,31 +209,32 @@ ObjString* allocate_string(VM* vm, const char* text, int length);
 //    o->obj = (GCObject*) string;
 //}
 
-inline void setlistvalue(Value* o, Value element)
-{
-    ObjList* list = (ObjList*) o->obj;
-
-    if (list->length > list->capacity)
-    {
-        if (list->fixed)
-            printf("Error fixed\n");
-        else
-
-        {
-            list->capacity = (list->capacity < 8) ? 8 : list->capacity * 2;
-            Value* newData = realloc(list->values, sizeof(Value) * list->capacity);
-            if (newData == NULL)
-            {
-                memoryCrash("List Realloc");
-                exit(1);
-            }
-
-            list->values = newData;
-        }
-    }
-    list->values[list->length++] = element;
-}
+//inline void setlistvalue(Value* o, Value element)
+//{
+//    ObjList* list = (ObjList*) o->obj;
+//
+//    if (list->length > list->capacity)
+//    {
+//        if (list->fixed)
+//            printf("Error fixed\n");
+//        else
+//
+//        {
+//            list->capacity = (list->capacity < 8) ? 8 : list->capacity * 2;
+//            Value* newData = realloc(list->values, sizeof(Value) * list->capacity);
+//            if (newData == NULL)
+//            {
+//                memoryCrash("List Realloc");
+//                exit(1);
+//            }
+//
+//            list->values = newData;
+//        }
+//    }
+//    list->values[list->length++] = element;
+//}
 //#define setstring(o, str, len)  (o).type = VAL_STRING; (o).string.chars = (str); (o).string.length = (len)
+
 #define setnil(o)   (o).type = VAL_NIL
 #define setnan(o)   (o).type = VAL_NAN
 #define settype(o, t)   (o).type = t

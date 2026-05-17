@@ -31,7 +31,12 @@ void compilerError(const char* message, const char* name, Location location, ...
 // Errores del runtime
 void runtimeError(const char* message, const char* name, int line, ...);
 void invalidOperandsError(const char* name, int line, const char* op, const char* type1, const char* type2);
+void typeError(const char* name, int line, const char* type1, const char* type2);
 void arithmeticError(const char* name, int line);
 void memoryError(const char* name, int line);
 void unknownType(const char* name, int line, int type);
 void cannotAddElementNotList(const char* name, int line, const char* type);
+void cannotResizeList(const char* name, int line);
+void cannotResizeDict(const char* name, int line);
+void resizeFractured(const char* name, int line, const char* complement);
+void indexoutofbound(const char* name, int line, int pos, int capacity);
