@@ -40,14 +40,17 @@ typedef enum
 
     // Listas
     OP_CREATE_LIST, // A, B, C        R(A) = [] capacity = R(B), fixed = C
-    OP_SET_LIST,    // A, B, C        R(A)[B] = R[C]
+    //OP_SET_LIST,    // A, B, C        R(A)[B] = R[C]
     OP_PUSH_LIST,   // A, B           R(A)[length + 1] = R(B)
-    OP_GET_LIST,    // A, B, C        R(A) = R(B)[R(C)]
+    //OP_GET_LIST,    // A, B, C        R(A) = R(B)[R(C)]
 
     // Diccionarios
     OP_CREATE_DICT, // A, B, C        R(A) = {} capacity = B, fixed = C
-    OP_SET_DICT,    // A, B, C        R(A)[R(B)] = R(C)
-    OP_GET_DICT,    // A, B, C        R(A) = R(B)[R(C)]
+    //OP_SET_DICT,    // A, B, C        R(A)[R(B)] = R(C)
+    //OP_GET_DICT,    // A, B, C        R(A) = R(B)[R(C)]
+
+    OP_SET_INDEX,    // A, B, C        R(A)[R(B)] = R(C)
+    OP_GET_INDEX,    // A, B, C        R(A) = R(B)[R(C)]
 
     // Control de flujo
     OP_JUMP,        // Ax                 pc += Ax

@@ -221,3 +221,13 @@ void indexoutofbound(const char* name, int line, int pos, int capacity)
 {
     runtimeError("IndexOutOfBoundsError: Tried to index position %d when capacity is %d", name, line, pos, capacity);
 }
+
+void attempedToIndexNoCollection(const char* name, int line, const char* type)
+{
+    runtimeError("AttempedToIndexNoCollection: Attemped to index %s instead of collection", name, line, type);
+}
+
+void indexError(const char* name, int line, const char* expected, const char* got)
+{
+    runtimeError("IndexError: Expected index type '%s', but got '%s'", name, line, expected, got);
+}

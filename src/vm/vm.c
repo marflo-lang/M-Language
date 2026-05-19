@@ -602,48 +602,68 @@ static void vm_run(VM* vm)
                 break;
             }
 
-            case OP_SET_LIST:
+            case OP_SET_INDEX:
             {
                 uint8_t a = GET_A(instr);
                 uint8_t b = GET_B(instr);
                 uint8_t c = GET_C(instr);
 
-                if (!islist(R[a]))
-                    cannotAddElementNotList(vm->name, chunk->lines[i], getValueTypeName(R[a]));
-                
+                if (islist(R[a]))
+                {
+                    //if (!isint(R[b]))
+                    //    indexError(vm->name, chunk->lines[i], "int", getValueTypeName(R[b]));
 
+                    set_list_element(vm, &R[a], R[c], b, chunk->lines[i]);
+
+                }
+                else
+                {
+                    cannotAddElementNotList(vm->name, chunk->lines[i], getValueTypeName(R[a]));
+                }
                 break;
             }
 
             case OP_PUSH_LIST:
             {
+                uint8_t a = GET_A(instr);
+                uint8_t bx = GET_Bx(instr);
 
+                if (islist(R[a]))
+                {
+                    set_list_element(vm, &R[a], R[bx], -1, chunk->lines[i]);
+
+                }
+                else
+                {
+                    cannotAddElementNotList(vm->name, chunk->lines[i], getValueTypeName(R[a]));
+                }
 
                 break;
             }
 
-            case OP_GET_LIST:
+            case OP_GET_INDEX:
             {
+                uint8_t a = GET_A(instr);
+                uint8_t b = GET_B(instr);
+                uint8_t c = GET_C(instr);
 
+                if (islist(R[b]))
+                {
+                    if (!isint(R[c]))
+                        indexError(vm->name, chunk->lines[i], "int", getValueTypeName(R[c]));
+
+                    R[a] = listvalue(R[b], R[c].i);
+                    print_rvalue(R[b], true);
+                }
+                else
+                {
+                    attempedToIndexNoCollection(vm->name, chunk->lines[i], getValueTypeName(R[b]));
+                }
 
                 break;
             }
 
             case OP_CREATE_DICT:
-            {
-
-
-                break;
-            }
-
-            case OP_SET_DICT:
-            {
-
-
-                break;
-            }
-
-            case OP_GET_DICT:
             {
 
 

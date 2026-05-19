@@ -242,5 +242,7 @@ void resize_dict(VM* vm, ObjDict* dict, int newCapacity, int line);
 
 /* macro to check if a value is false */
 #define isfalse(o)  (ismnan(o) || isnil(o) || (isboolean(o) && bvalue(o) == false))
-
+void print_rvalue(Value v, bool newLine);
+inline Value make_rnil();
+inline Value make_rnan();
 #endif

@@ -4,6 +4,18 @@
 
 static void intern_string(VM* vm, ObjString* string);
 
+extern inline Value make_rnil()
+{
+    Value v = { .type = VAL_NIL, .i = 0 };
+    return v;
+}
+
+extern Value make_rnan()
+{
+    Value v = { .type = VAL_NAN, .i = 0 };
+    return v;
+}
+
 static uint32_t hash_string(const char* text, int length)
 {
     uint32_t hash = 2166136261u;
@@ -190,6 +202,7 @@ void resize_list(VM* vm, ObjList* list, int newCapacity, int line)
 
     if (newCapacity < list->length)
         resizeFractured(vm->name, line, "list because the new capacity is lower than old length");
+    int oldCapacity = list->capacity;
     size_t oldSize = sizeof(Value) * list->capacity;
     size_t newSize = sizeof(Value) * newCapacity;
     Value* values = realloc(list->values, newSize);
@@ -200,6 +213,11 @@ void resize_list(VM* vm, ObjList* list, int newCapacity, int line)
     }
     // pendiente una zona aquí de inicializar con nil los elementos nuevos
     list->values = values;
+    for (int i = oldCapacity; i < newCapacity; i++)
+    {
+        list->values[i] = make_rnil();
+    }
+
     list->capacity = newCapacity;
     vm->bytes_allocated += newSize - oldSize;
 }
@@ -220,6 +238,11 @@ ObjList* allocate_list(VM* vm, int length, int capacity, bool fixed)
         {
             memoryCrash("List Allocation");
             exit(1);
+        }
+
+        for (int i = 0; i < capacity; i++)
+        {
+            obj->values[i] = make_rnil();
         }
 
         vm->bytes_allocated += sizeof(Value) * capacity;
@@ -245,8 +268,8 @@ void set_list_element(VM* vm, Value* o, Value element, int pos, int line)
     }
     else
     {
-        if (list->length > list->capacity)
-            resize_list(vm, list, list->capacity * 2, line);
+        if (list->length >= list->capacity)
+            resize_list(vm, list, (list->capacity < 8) ? 8 : (list->capacity * 2), line);
 
         list->values[list->length++] = element;
     }
@@ -352,13 +375,48 @@ void free_object(VM* vm)
 
 }
 
-void print_object(GCObject* object)
+void print_rvalue(Value v, bool newLine)
 {
-#if  defined(DEBUG) && DEBUG == 1
-    printf("DEBUG\n");
-#else
-    printf("NO DEBUG\n");
-#endif //  defined(DEBUG) && DEBUG == 1
+    if (isint(v))
+    {
+        printf("int -> %d", v.i);
+    }
+    else if (isfloat(v))
+    {
+        printf("float -> %f", v.f);
+    }
+    else if (isboolean(v))
+    {
+        printf("boolean -> %s", (v.b == true) ? "true" : "false");
+    }
+    else if (isnil(v))
+    {
+        printf("nil");
+    }
+    else if (ismnan(v))
+    {
+        printf("NaN");
+    }
+    else if (isstring(v))
+    {
+        ObjString* string = (ObjString*) v.obj;
+        printf("string: length %d, hash %d, text %s", string->length, string->hash, string->chars);
+    }
+    else if (islist(v))
+    {
+        ObjList* list = (ObjList*) v.obj;
+        printf("list: capacity %d, length %d, fixed %s, values ", list->capacity, list->length, (list->fixed == true) ? "true" : "false");
+        printf("[");
+        for (int i = 0; i < list->capacity; i++)
+        {
+            if (i > 0)
+                printf(", ");
+            print_rvalue(list->values[i], false);
+        }
+        printf("]");
+    }
 
+    if (newLine == true)
+        printf("\n");
 }
 

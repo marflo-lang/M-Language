@@ -26,6 +26,7 @@ static Expr* parser_prefix(Parser* P);
 static Expr* parser_posfix(Parser* P, Expr* left);
 static Expr* parser_list(Parser* P);
 static Expr* parser_dict(Parser* P);
+static Expr* parser_index(Parser* P, Expr* left);
 static Expr* parser_expr_error(Parser* P);
 
 // Constructors
@@ -69,7 +70,7 @@ ParserRule rules[] = {
     [M_V_NIL] = {parser_literal, NULL, PREC_NONE},
     [M_V_IDENTIFIER] = {parser_identifier, NULL, PREC_NONE},
     [M_LPAREN] = {parser_grouping, parser_grouping, PREC_ACCESS},
-    [M_LBRAKET] = {parser_list, NULL, PREC_ACCESS},
+    [M_LBRAKET] = {parser_list, parser_index, PREC_ACCESS},
     [M_LBRACE] = {parser_dict, NULL, PREC_ACCESS},
     [M_FIXED] = {parser_list, NULL, PREC_ACCESS},
 
@@ -252,6 +253,7 @@ static bool isLValue(Expr* e)
     switch (e->expr_type)
     {
         case EXPR_NAME:
+        case EXPR_INDEX:
             return true;
         default:
             return false;
@@ -633,6 +635,21 @@ static Expr* parser_dict(Parser* P)
     return (Expr*) dict;
 }
 
+static Expr* parser_index(Parser* P, Expr* left)
+{
+    Expr* index = parser_expression(P);
+    consume(P, M_RBRAKET, "]");
+
+    IndexExpr* expr = arena_allocator(P->arena, sizeof(IndexExpr));
+    expr->expr.base.location = locationCPos(left->base.location.begin, index->base.location.end);
+    expr->expr.base.ttype = NODE_EXPR;
+    expr->expr.expr_type = EXPR_INDEX;
+    expr->collection = left;
+    expr->index = index;
+
+    return (Expr*) expr;
+}
+
 static Expr* parser_grouping(Parser* P)
 {
     Location begin = P->previous.location;
@@ -780,20 +797,21 @@ static Stmt* parser_assign(Parser* P, Expr* left)
     if (!isLValue(left))
         syntaxError("Expected a variable name on assign statement", P->name, left->base.location);
 
-    Token tempNames[8];
-    tempNames[0] = ((NameExpr*)left)->name;
+    Expr* tempNames[8];
+    tempNames[0] = left;
     int namesCount = 1;
 
     while (match(P, M_COMMA))
     {
         if (namesCount > 8)
         {
-            syntaxError("Too many variables (max 8)", P->name, locationCPos(tempNames[0].location.begin, tempNames[namesCount-1].location.end));
+            syntaxError("Too many variables (max 8)", P->name, locationCPos(tempNames[0]->base.location.begin, tempNames[namesCount-1]->base.location.end));
             break;
         }
 
-        Token name = P->current;
-        consume(P, M_V_IDENTIFIER, "a variable name on assign statement");
+        Expr* name = parser_expression(P);
+        if (!isLValue(name))
+            syntaxError("Expected a variable name on assign statement", P->name, name->base.location);
         tempNames[namesCount++] = name;
     }
 
@@ -823,8 +841,8 @@ static Stmt* parser_assign(Parser* P, Expr* left)
     }
 
 
-    Token* names = arena_allocator(P->arena, sizeof(Token) * namesCount);
-    memcpy(names, tempNames, sizeof(Token) * namesCount);
+    Expr** names = arena_allocator(P->arena, sizeof(Expr*) * namesCount);
+    memcpy(names, tempNames, sizeof(Expr*) * namesCount);
 
     Expr** values = arena_allocator(P->arena, sizeof(Expr*) * valuesCount);
     memcpy(values, tempValues, sizeof(Expr*) * valuesCount);
@@ -833,7 +851,7 @@ static Stmt* parser_assign(Parser* P, Expr* left)
 
     //printf("===============line %d, cloumn %d\n", locationCPos(names[0].location.begin, values[valuesCount - 1]->base.location.end).begin.line, locationCPos(names[0].location.begin, values[valuesCount - 1]->base.location.end).begin.column);
 
-    stmt->stmt.base.location = valuesCount > 0 ? locationCPos(names[0].location.begin, values[valuesCount - 1]->base.location.end) : locationCPos(names[0].location.begin, names[namesCount - 1].location.end);
+    stmt->stmt.base.location = valuesCount > 0 ? locationCPos(names[0]->base.location.begin, values[valuesCount - 1]->base.location.end) : locationCPos(names[0]->base.location.begin, names[namesCount - 1]->base.location.end);
     stmt->stmt.base.ttype = NODE_STMT;
     stmt->stmt.stmt_type = STMT_ASSING;
     stmt->names = names;
@@ -1512,8 +1530,9 @@ static void print_stmt(Parser* P, Stmt* stmt, const char* prefix, bool isLast)
                 //printf("aquí hay un error en el AST, para ser más específicos en el assign->names[i].length\n");
                 char namePrefix[256];
                 build_prefix(namePrefix, targetPrefix, false);
-                print_branch(namePrefix, i == assign->nameCount - 1);
-                printf("%.*s\n", assign->names[i].length, &P->src[assign->names[i].location.begin.offset]);
+                //print_branch(namePrefix, i == assign->nameCount - 1);
+                //printf("%.*s\n", assign->names[i].length, &P->src[assign->names[i].location.begin.offset]);
+                print_expr(P, assign->names[i], namePrefix, i == assign->nameCount - 1);
             }
 
             //print_indent(indent + 1);

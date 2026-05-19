@@ -31,6 +31,7 @@ typedef enum
     EXPR_LITERAL,
     EXPR_LIST,
     EXPR_DICT,
+    EXPR_INDEX,
     EXPR_ENTRY,
     EXPR_NAME,
     EXPR_PREFIX,
@@ -123,6 +124,14 @@ typedef struct
     bool fixed;
 } LiteralDictExpr;
 
+typedef struct
+{
+    Expr expr;
+
+    Expr* collection;
+    Expr* index;
+} IndexExpr;
+
 // Nodo base de las sentencias del cual todas las SENTENCIAS 'heredan'
 
 typedef enum
@@ -171,7 +180,7 @@ typedef struct
 {
     Stmt stmt;
 
-    Token* names;
+    Expr** names;
     int nameCount;
 
     Expr** values;

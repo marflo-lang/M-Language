@@ -391,7 +391,8 @@ int compiler_expr(Compiler* C, Expr* expr, int target)
             for (int i = 0; i < list->count; i++)
             {
                 int element = compiler_expr(C, list->elements[i], -1);
-                ir_emit(C, IR_SET_LIST, r, i, element, list->elements[i]->base.location);
+                //ir_emit(C, IR_SET_INDEX, r, i, element, list->elements[i]->base.location);
+                ir_emit(C, IR_PUSH_LIST, r, element, 0, list->elements[i]->base.location);
             }
 
             return r;
@@ -412,6 +413,20 @@ int compiler_expr(Compiler* C, Expr* expr, int target)
             }
 
             return symbol->reg;
+        }
+        case EXPR_INDEX:
+        {
+            IndexExpr* index = (IndexExpr*) expr;
+
+            int reg = (target > -1) ? target : alloc_reg(C);
+
+            int coll = compiler_expr(C, index->collection, -1);
+
+            int ind = compiler_expr(C, index->index, -1);
+
+            ir_emit(&C->ir, IR_GET_INDEX, reg, coll, ind, index->expr.base.location);
+
+            return reg;
         }
         case EXPR_BINARY:
         {
@@ -693,16 +708,19 @@ void compiler_stmt(Compiler* C, Stmt* stmt)
             StmtAssign* assign = (StmtAssign*) stmt;
             for (int i = 0; i < assign->nameCount; i++)
             {
-                Symbol* symbol = symbols_resolve(&C->symbol, assign->names[i], C->src);
+                //Symbol* symbol = symbols_resolve(&C->symbol, assign->names[i], C->src);
 
-                if (symbol == NULL)
-                    compilerError("Variable '%.*s' has not yet been declared. Consider declaring it before using it", C->name, assign->names[i].location, assign->names[i].length, &C->src[assign->names[i].location.begin.offset]);
+                
 
-                if (symbol->isConst)
-                    compilerError("Const '%.*s' cannot be modified", C->name, assign->stmt.base.location, assign->names[i].length, &C->src[assign->names[i].location.begin.offset]);
 
-                int reg = symbol->reg;
+                //if (symbol == NULL)
+                    //compilerError("Variable '%.*s' has not yet been declared. Consider declaring it before using it", C->name, assign->names[i].location, assign->names[i].length, &C->src[assign->names[i].location.begin.offset]);
 
+                //if (symbol->isConst)
+                    //compilerError("Const '%.*s' cannot be modified", C->name, assign->stmt.base.location, assign->names[i].length, &C->src[assign->names[i].location.begin.offset]);
+
+                //int reg = symbol->reg;
+                int reg = compiler_expr(C, assign->names[i], -1);
                 int value_reg;
 
                 if (i < assign->valueCount)
@@ -844,18 +862,14 @@ static void print_ir(Compiler* C, int i)
         printf("IR_GTE R%d R%d R%d", ir.a, ir.b, ir.c);
     else if (ir.op == IR_CREATE_LIST)
         printf("IR_CREATE_LIST R%d R%d %s", ir.a, ir.b, (ir.c == true) ? "true" : "false");
-    else if (ir.op == IR_SET_LIST)
-        printf("IR_SET_LIST R%d %d R%d", ir.a, ir.b, ir.c);
+    else if (ir.op == IR_SET_INDEX)
+        printf("IR_SET_INDEX R%d %d R%d", ir.a, ir.b, ir.c);
     else if (ir.op == IR_PUSH_LIST)
     printf("IR_PUSH_LIST R%d R%d", ir.a, ir.b);
-    else if (ir.op == IR_GET_LIST)
-    printf("IR_GET_LIST R%d R%d R%d", ir.a, ir.b, ir.c);
+    else if (ir.op == IR_GET_INDEX)
+    printf("IR_GET_INDEX R%d R%d R%d", ir.a, ir.b, ir.c);
     else if (ir.op == IR_CREATE_DICT)
     printf("IR_CREATE_DICT R%d R%d R%d", ir.a, ir.b, ir.c);
-    else if (ir.op == IR_SET_DICT)
-    printf("IR_SET_DICT R%d R%d R%d", ir.a, ir.b, ir.c);
-    else if (ir.op == IR_GET_DICT)
-        printf("IR_GET_DICT R%d R%d R%d", ir.a, ir.b, ir.c);
     else if (ir.op == IR_JUMP)
         printf("IR_JUMP L%d", ir.b);
     else if (ir.op == IR_JUMP_IF_FALSE)
