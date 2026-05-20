@@ -10,27 +10,6 @@
 #include <math.h>
 #include <string.h>
 
-
-static const char* getValueTypeName(Value v)
-{
-    if (isint(v))
-        return "int";
-    else if (isfloat(v))
-        return "float";
-    else if (isstring(v))
-        return "string";
-    else if (islist(v))
-        return "list";
-    else if (isboolean(v))
-        return "boolean";
-    else if (isnil(v))
-        return "nil";
-    else if (ismnan(v))
-        return "NaN";
-    else
-        return "Unrecognized type";
-}
-
 static bool can_coerce_to_float(Value v, double* out_val)
 {
     if (isint(v))

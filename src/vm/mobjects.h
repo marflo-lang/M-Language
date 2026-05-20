@@ -94,7 +94,7 @@ typedef struct
     GCObject gc;
 
     int count;
-    //int capacity;
+    int capacity;
 
     bool fixed;
 
@@ -138,6 +138,7 @@ typedef struct
 #define ivalue(o)   (o).i
 #define fvalue(o)   (o).f
 #define bvalue(o)   (o).b
+#define orefvalue(o)    (o).obj
 inline const char* svalue(Value o);
 inline Value listvalue(Value o, int pos);
 
@@ -171,6 +172,7 @@ inline int listlenvalue(Value o);
 #define isint(o)    (ttype(o) == VAL_INT)
 #define isfloat(o)    (ttype(o) == VAL_FLOAT)
 #define isboolean(o)    (ttype(o) == VAL_BOOLEAN)
+#define isobject(o)     (ttype(o) == VAL_OBJ)
 inline bool isstring(Value o);
 inline bool islist(Value o);
 
@@ -245,4 +247,5 @@ void resize_dict(VM* vm, ObjDict* dict, int newCapacity, int line);
 void print_rvalue(Value v, bool newLine);
 inline Value make_rnil();
 inline Value make_rnan();
+const char* getValueTypeName(Value v);
 #endif

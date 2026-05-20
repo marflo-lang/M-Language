@@ -42,3 +42,4 @@ void resizeFractured(const char* name, int line, const char* complement);
 void indexoutofbound(const char* name, int line, int pos, int capacity);
 void attempedToIndexNoCollection(const char* name, int line, const char* type);
 void indexError(const char* name, int line, const char* expected, const char* got);
+void invalidKeyType(const char* name, int line, const char* expected, const char* got);

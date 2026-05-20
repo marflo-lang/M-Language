@@ -16,6 +16,66 @@ extern Value make_rnan()
     return v;
 }
 
+const char* getValueTypeName(Value v)
+{
+    if (isint(v))
+        return "int";
+    else if (isfloat(v))
+        return "float";
+    else if (isstring(v))
+        return "string";
+    else if (islist(v))
+        return "list";
+    else if (isboolean(v))
+        return "boolean";
+    else if (isnil(v))
+        return "nil";
+    else if (ismnan(v))
+        return "NaN";
+    else
+        return "Unrecognized type";
+}
+
+static uint32_t hash_rvalue(VM* vm, int line, Value v)
+{
+    if (v.type == VAL_OBJ)
+        if (v.obj->objType == OBJ_STRING)
+        {
+            ObjString* string = (ObjString*)v.obj;
+            return string->hash;
+        }
+        else
+            invalidKeyType(vm->name, line, "int, float, string, boolean", getValueTypeName(v));
+
+    uint32_t hash = 2166136261u;
+    
+    
+
+}
+
+static bool rvalue_equals(Value a, Value b)
+{
+    if (ttype(a) == ttype(b))
+    {
+        if (isint(a))
+            return ivalue(a) == ivalue(b);
+        else if (isfloat(a))
+            return fvalue(a) == fvalue(b);
+        else if (isboolean(a))
+            return bvalue(a) == bvalue(b);
+        else if (isnil(a))
+            return true;
+        else if (ismnan(a))
+            return true;
+        else if (isobject(a))
+            return orefvalue(a) == orefvalue(b);
+        else
+            return false;
+    }
+    else
+        return false;
+}
+
 static uint32_t hash_string(const char* text, int length)
 {
     uint32_t hash = 2166136261u;
@@ -324,6 +384,52 @@ extern inline Value listvalue(Value o, int pos)
         return list->values[pos - 1];
 }
 
+static DictEntry* find_entry(VM* vm, DictEntry* entries, int capacity, Value key, int line)
+{
+    uint32_t index = hash_rvalue(vm, line, key) % capacity;
+
+    DictEntry* entry;
+
+    while (true)
+    {
+        entry = &entries[index];
+
+        if (ismnan(entry->key))
+            return entry;
+
+        if (rvalue_equals(entry->key, key))
+            return entry;
+
+        index = (index + 1) % capacity;
+    }
+}
+
+void set_dict_key_value(VM* vm, ObjDict* dict, Value key, Value value, int line)
+{
+    DictEntry* entry = find_entry(vm, dict->entries, dict->capacity, key, line);
+
+    if (ismnan(entry->key))
+    {
+        if (dict->fixed)
+            cannotResizeDict(vm->name, line);
+
+        if ((dict->count + 1) > dict->capacity * 0.75)
+            resize_dict(vm, dict, dict->capacity * 2, line);
+
+        dict->count++;
+    }
+
+    entry->key = key;
+    entry->value = value;
+}
+
+Value get_dict_value(VM* vm, ObjDict* dict, Value key, int line)
+{
+    DictEntry* entry = find_entry(vm, dict->entries, dict->capacity, key, line);
+
+    return entry->value;
+}
+
 void resize_dict(VM* vm, ObjDict* dict, int newCapacity, int line)
 {
     if (dict->fixed)
@@ -349,7 +455,7 @@ ObjDict* allocate_dict(VM* vm, int count, bool fixed)
 {
     ObjDict* obj = (ObjDict*) allocate_object(vm, sizeof(ObjDict), OBJ_DICTIONARY);
 
-    //obj->capacity = capacity;
+    obj->capacity = count;
     obj->fixed = fixed;
     obj->count = count;
 

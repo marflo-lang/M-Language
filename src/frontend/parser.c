@@ -74,9 +74,6 @@ ParserRule rules[] = {
     [M_LBRACE] = {parser_dict, NULL, PREC_ACCESS},
     [M_FIXED] = {parser_list, NULL, PREC_ACCESS},
 
-    // <>
-    [M_CONCAT] = {NULL, parser_binary, PREC_CONCAT},
-
     // or
     [M_OR] = {NULL, parser_binary, PREC_OR},
 
@@ -92,6 +89,9 @@ ParserRule rules[] = {
     [M_LTE] = {NULL, parser_binary, PREC_COMPARISON},
     [M_GT] = {NULL, parser_binary, PREC_COMPARISON},
     [M_GTE] = {NULL, parser_binary, PREC_COMPARISON},
+
+    // <>
+    [M_CONCAT] = {NULL, parser_binary, PREC_CONCAT},
 
     // +, -
     [M_PLUS] = {NULL, parser_binary, PREC_TERM},

@@ -231,3 +231,8 @@ void indexError(const char* name, int line, const char* expected, const char* go
 {
     runtimeError("IndexError: Expected index type '%s', but got '%s'", name, line, expected, got);
 }
+
+void invalidKeyType(const char* name, int line, const char* expected, const char* got)
+{
+    runtimeError("InvalidKeyTypeError: Expected types '%s' to dict key, but got type '%s'", name, line, expected, got);
+}

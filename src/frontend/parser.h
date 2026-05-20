@@ -26,11 +26,11 @@ typedef struct
 typedef enum
 {
     PREC_NONE,
-    PREC_CONCAT, // <>
     PREC_OR, // or
     PREC_AND, // and
     PREC_EQUALITY, // ==, !=
     PREC_COMPARISON, // <=, <, >=, >
+    PREC_CONCAT, // <>
     PREC_TERM, // +, -
     PREC_FACTOR, // *, /, // %
     PREC_POWER, // ^
