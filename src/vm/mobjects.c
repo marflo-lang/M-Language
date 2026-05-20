@@ -259,12 +259,15 @@ void set_list_element(VM* vm, Value* o, Value element, int pos, int line)
 {
     ObjList* list = (ObjList*) o->obj;
 
-    if (pos > -1)
+    if (pos > -2)
     {
-        if (pos > list->capacity)
-            indexoutofbound(vm->name, line, pos, list->capacity);
+        if (pos > list->length || (pos == -1 && list->length == 0))
+            indexoutofbound(vm->name, line, pos, list->length);
 
-        list->values[pos - 1] = element;
+        if (pos == -1)
+            list->values[list->length - 1] = element;
+        else
+            list->values[pos - 1] = element;
     }
     else
     {
@@ -328,7 +331,7 @@ void resize_dict(VM* vm, ObjDict* dict, int newCapacity, int line)
 
     if (newCapacity < dict->count)
         resizeFractured(vm->name, line, "dictionary because the new capacity is lower than old count");
-    size_t oldSize = sizeof(DictEntry) * dict->capacity;
+    size_t oldSize = sizeof(DictEntry) * dict->count;
     size_t newSize = sizeof(DictEntry) * newCapacity;
     DictEntry* entries = realloc(dict->entries, newSize);
     if (entries == NULL)
@@ -338,21 +341,21 @@ void resize_dict(VM* vm, ObjDict* dict, int newCapacity, int line)
     }
     // pendiente una zona aquí de inicializar con nil los elementos nuevos
     dict->entries = entries;
-    dict->capacity = newCapacity;
+    dict->count = newCapacity;
     vm->bytes_allocated += newSize - oldSize;
 }
 
-ObjDict* allocate_dict(VM* vm, int count, int capacity, bool fixed)
+ObjDict* allocate_dict(VM* vm, int count, bool fixed)
 {
     ObjDict* obj = (ObjDict*) allocate_object(vm, sizeof(ObjDict), OBJ_DICTIONARY);
 
-    obj->capacity = capacity;
+    //obj->capacity = capacity;
     obj->fixed = fixed;
     obj->count = count;
 
-    if (capacity > 0)
+    if (count > 0)
     {
-        obj->entries = calloc(capacity, sizeof(DictEntry));
+        obj->entries = calloc(count, sizeof(DictEntry));
 
         if (obj->entries == NULL)
         {
@@ -360,7 +363,7 @@ ObjDict* allocate_dict(VM* vm, int count, int capacity, bool fixed)
             exit(1);
         }
 
-        vm->bytes_allocated += sizeof(DictEntry) * capacity;
+        vm->bytes_allocated += sizeof(DictEntry) * count;
     }
     else
     {
@@ -368,6 +371,42 @@ ObjDict* allocate_dict(VM* vm, int count, int capacity, bool fixed)
     }
 
     return obj;
+}
+
+extern inline void set_dict(Value* a, ObjDict* dict)
+{
+    a->type = VAL_OBJ;
+    a->obj = (GCObject*) dict;
+}
+
+extern inline bool isdict(Value o)
+{
+    if (o.type == VAL_OBJ)
+    {
+        GCObject* obj = (GCObject*)(o.obj);
+
+        if (obj->objType == OBJ_DICTIONARY)
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+extern inline int dictlenvalue(Value o)
+{
+    if (o.type == VAL_OBJ)
+    {
+        GCObject* obj = (GCObject*)(o.obj);
+
+        if (obj->objType == OBJ_DICTIONARY)
+        {
+            ObjDict* list = (ObjDict*) obj;
+
+            return list->count;
+        }
+    }
 }
 
 void free_object(VM* vm)
@@ -400,7 +439,7 @@ void print_rvalue(Value v, bool newLine)
     else if (isstring(v))
     {
         ObjString* string = (ObjString*) v.obj;
-        printf("string: length %d, hash %d, text %s", string->length, string->hash, string->chars);
+        printf("string: length %d, hash %d, text '%s'", string->length, string->hash, string->chars);
     }
     else if (islist(v))
     {

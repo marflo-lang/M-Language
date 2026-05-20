@@ -1,7 +1,8 @@
 
-var list = fixed(10) [10, 20, 30, 40, 50, 60, 70, 80, 90]
 
-list[2] = 3
+var dict = {["name"] = 10, ["married"] = false}
+
+
 
 
 

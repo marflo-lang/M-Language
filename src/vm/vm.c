@@ -104,7 +104,7 @@ static void vm_run(VM* vm)
                     R[a].type = VAL_OBJ;
                     R[a].obj = allocate_string(vm, kbx.string.chars, kbx.string.length);
                 }
-
+                
                 break;
             }
 
@@ -610,11 +610,14 @@ static void vm_run(VM* vm)
 
                 if (islist(R[a]))
                 {
-                    //if (!isint(R[b]))
-                    //    indexError(vm->name, chunk->lines[i], "int", getValueTypeName(R[b]));
+                    if (!isint(R[b]))
+                        indexError(vm->name, chunk->lines[i], "int", getValueTypeName(R[b]));
 
-                    set_list_element(vm, &R[a], R[c], b, chunk->lines[i]);
+                    if (ivalue(R[b]) < -1 || ivalue(R[b]) == 0)
+                        indexoutofbound(vm->name, chunk->lines[i], ivalue(R[b]), ((ObjList*)(R[a].obj))->length);
 
+                    set_list_element(vm, &R[a], R[c], R[b].i, chunk->lines[i]);
+                    //print_rvalue(R[a], true);
                 }
                 else
                 {
@@ -630,8 +633,7 @@ static void vm_run(VM* vm)
 
                 if (islist(R[a]))
                 {
-                    set_list_element(vm, &R[a], R[bx], -1, chunk->lines[i]);
-
+                    set_list_element(vm, &R[a], R[bx], -2, chunk->lines[i]);
                 }
                 else
                 {
@@ -665,7 +667,12 @@ static void vm_run(VM* vm)
 
             case OP_CREATE_DICT:
             {
+                uint8_t a = GET_A(instr);
+                uint8_t b = GET_B(instr);
+                uint8_t c = GET_C(instr);
 
+                R[a].type = VAL_OBJ;
+                R[a].obj = allocate_dict(vm, b, c);
 
                 break;
             }

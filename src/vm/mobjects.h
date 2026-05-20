@@ -94,7 +94,7 @@ typedef struct
     GCObject gc;
 
     int count;
-    int capacity;
+    //int capacity;
 
     bool fixed;
 
@@ -188,7 +188,7 @@ void set_list_element(VM* vm, Value* o, Value element, int pos, int line);
 ObjList* allocate_list(VM* vm, int length, int capacity, bool fixed);
 void resize_list(VM* vm, ObjList* list, int newCapacity, int line);
 // dict
-ObjDict* allocate_dict(VM* vm, int count, int capacity, bool fixed);
+ObjDict* allocate_dict(VM* vm, int count, bool fixed);
 void resize_dict(VM* vm, ObjDict* dict, int newCapacity, int line);
 //inline void setstring(Value* o, const char* str, int len)
 //{

@@ -219,7 +219,7 @@ void resizeFractured(const char* name, int line, const char* complement)
 
 void indexoutofbound(const char* name, int line, int pos, int capacity)
 {
-    runtimeError("IndexOutOfBoundsError: Tried to index position %d when capacity is %d", name, line, pos, capacity);
+    runtimeError("IndexOutOfBoundsError: Tried to index position %d when length is %d", name, line, pos, capacity);
 }
 
 void attempedToIndexNoCollection(const char* name, int line, const char* type)

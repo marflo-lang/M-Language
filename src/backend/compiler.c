@@ -397,6 +397,29 @@ int compiler_expr(Compiler* C, Expr* expr, int target)
 
             return r;
         }
+        case EXPR_DICT:
+        {
+            LiteralDictExpr* dict = (LiteralDictExpr*) expr;
+
+            int r = (target > -1) ? target : alloc_reg(C);
+
+            int count = dict->count;
+            
+            ir_emit(&C->ir, IR_CREATE_DICT, r, count, dict->fixed, dict->expr.base.location);
+
+            for (int i = 0; i < count; i++)
+            {
+                int key = compiler_expr(C, dict->entries[i].key, -1);
+                int value = compiler_expr(C, dict->entries[i].value, -1);
+                ir_emit(&C->ir, IR_SET_INDEX, r, key, value, locationCPos(dict->entries[i].key->base.location.begin, dict->entries[i].value->base.location.end));
+            }
+
+            //dict->count;
+            dict->entries;
+            dict->fixed;
+
+            return r;
+        }
         case EXPR_NAME:
         {
             NameExpr* nameE = (NameExpr*) expr;
@@ -559,6 +582,58 @@ int compiler_expr(Compiler* C, Expr* expr, int target)
     }
 }
 
+static void compiler_assign(Compiler* C, Expr* lvalue, Expr* rvalue, Location lastLoc)
+{
+    NameExpr* name = (NameExpr*) lvalue;
+    Symbol* symbol = symbols_resolve(&C->symbol, name->name, C->src);
+
+    if (symbol == NULL)
+        compilerError("Variable '%.*s' has not yet been declared. Consider declaring it before using it", C->name, name->expr.base.location, name->name.length, &C->src[name->expr.base.location.begin.offset]);
+
+    if (symbol->isConst)
+        compilerError("Const '%.*s' cannot be modified", C->name, name->expr.base.location, name->name.length, &C->src[name->expr.base.location.begin.offset]);
+
+    int reg = symbol->reg;
+    
+    int value_reg;
+
+    if (rvalue != NULL)
+    {
+        value_reg = compiler_expr(C, rvalue, reg);
+    }
+    else
+    {
+        //ir_emit(&C->ir, IR_LOAD_CONST, value_reg, 0, 0, lastLoc); // NaN, pendiente mejorar
+        value_reg = alloc_reg(C);
+        Constant v = make_nan();
+        int k = const_add(&C->constants, v);
+        ir_emit(&C->ir, IR_LOAD_CONST, value_reg, k, 0, lastLoc);
+    }
+}
+
+static void compiler_index_assign(Compiler* C, Expr* lvalue, Expr* rvalue)
+{
+    IndexExpr* index = (IndexExpr*) lvalue;
+
+    if (!(index->collection->expr_type == EXPR_NAME))
+        compilerError("An internal error occurred in the node type of the collection", C->name, index->collection->base.location);
+
+    NameExpr* name = (NameExpr*) index->collection;
+
+    Symbol* symbol = symbols_resolve(&C->symbol, name->name, C->src);
+
+    if (symbol == NULL)
+        compilerError("Variable '%.*s' has not yet been declared. Consider declaring it before using it", C->name, name->expr.base.location, name->name.length, &C->src[name->expr.base.location.begin.offset]);
+
+    int reg = symbol->reg;
+
+    int ind = compiler_expr(C, index->index, -1);
+
+    int value = compiler_expr(C, rvalue, -1);
+
+    ir_emit(&C->ir, IR_SET_INDEX, reg, ind, value, index->expr.base.location);
+}
+
 void compiler_stmt(Compiler* C, Stmt* stmt)
 {
     switch (stmt->stmt_type)
@@ -708,33 +783,18 @@ void compiler_stmt(Compiler* C, Stmt* stmt)
             StmtAssign* assign = (StmtAssign*) stmt;
             for (int i = 0; i < assign->nameCount; i++)
             {
-                //Symbol* symbol = symbols_resolve(&C->symbol, assign->names[i], C->src);
-
-                
-
-
-                //if (symbol == NULL)
-                    //compilerError("Variable '%.*s' has not yet been declared. Consider declaring it before using it", C->name, assign->names[i].location, assign->names[i].length, &C->src[assign->names[i].location.begin.offset]);
-
-                //if (symbol->isConst)
-                    //compilerError("Const '%.*s' cannot be modified", C->name, assign->stmt.base.location, assign->names[i].length, &C->src[assign->names[i].location.begin.offset]);
-
-                //int reg = symbol->reg;
-                int reg = compiler_expr(C, assign->names[i], -1);
-                int value_reg;
-
-                if (i < assign->valueCount)
+                switch (assign->names[i]->expr_type)
                 {
-                    value_reg = compiler_expr(C, assign->values[i], reg);
+                    case EXPR_NAME:
+                        compiler_assign(C, assign->names[i], (i < assign->valueCount) ? assign->values[i] : NULL, assign->values[assign->valueCount - 1]->base.location);
+                        break;
+                    case EXPR_INDEX:
+                        compiler_index_assign(C, assign->names[i], (i < assign->valueCount) ? assign->values[i] : NULL);
+                        break;
+                    default:
+                        compilerError("Unknown assignment type", C->name, assign->names[i]->base.location);
+                        break;
                 }
-                else
-                {
-                    value_reg = alloc_reg(C);
-                    ir_emit(&C->ir, IR_LOAD_CONST, value_reg, 0, 0, assign->values[assign->valueCount - 1]->base.location); // NaN, pendiente mejorar
-                }
-
-                //if (reg != value_reg)
-                    //ir_emit(&C->ir, IR_MOVE, reg, value_reg, 0, assign->stmt.base.location);
             }
             return;
         }

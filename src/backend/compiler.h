@@ -45,7 +45,7 @@ typedef enum
     //IR_GET_LIST,    // A, B, C        R(A) = R(B)[R(C)]
 
     // Diccionarios
-    IR_CREATE_DICT, // A, B, C        R(A) = {} capacity = B, fixed = C
+    IR_CREATE_DICT, // A, B, C        R(A) = {} count = B, fixed = C
     //IR_SET_DICT,    // A, B, C        R(A)[R(B)] = R(C)
     //IR_GET_DICT,    // A, B, C        R(A) = R(B)[R(C)]
 

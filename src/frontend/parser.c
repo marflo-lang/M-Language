@@ -1356,6 +1356,26 @@ static void print_expr(Parser* P, Expr* e, const char* prefix, bool isLast)
             break;
         }
 
+        case EXPR_INDEX:
+        {
+            IndexExpr* index = (IndexExpr*) e;
+            printf("Index Access:\n");
+            char titlePrefix[256];
+            build_prefix(titlePrefix, prefix, isLast);
+            print_branch(titlePrefix, false);
+            printf("Collection:\n");
+            char inPrefix[256];
+            build_prefix(inPrefix, titlePrefix, false);
+            print_expr(P, index->collection, inPrefix, true);
+            print_branch(titlePrefix, true);
+            printf("Index:\n");
+            char lastPrefix[256];
+            build_prefix(lastPrefix, titlePrefix, true);
+            print_expr(P, index->index, lastPrefix, true);
+
+            break;
+        }
+
         case EXPR_ERROR:
         {
             ErrorExpr* error = (ErrorExpr*) e;
