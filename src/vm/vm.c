@@ -129,7 +129,7 @@ static void vm_run(VM* vm)
                     {
                         char* type1 = getValueTypeName(R[b]);
                         char* type2 = getValueTypeName(R[c]);
-                        vm->has_error = true;
+                        //vm->has_error = true;
                         invalidOperandsError(vm->name, chunk->lines[i], "+", type1, type2);
                     }
                 }
@@ -165,7 +165,7 @@ static void vm_run(VM* vm)
                     {
                         char* type1 = getValueTypeName(R[b]);
                         char* type2 = getValueTypeName(R[c]);
-                        vm->has_error = true;
+                        //vm->has_error = true;
                         invalidOperandsError(vm->name, chunk->lines[i], "-", type1, type2);
                     }
                 }
@@ -202,7 +202,7 @@ static void vm_run(VM* vm)
                     {
                         char* type1 = getValueTypeName(R[b]);
                         char* type2 = getValueTypeName(R[c]);
-                        vm->has_error = true;
+                        //vm->has_error = true;
                         invalidOperandsError(vm->name, chunk->lines[i], "*", type1, type2);
                     }
                 }
@@ -246,7 +246,7 @@ static void vm_run(VM* vm)
                     {
                         char* type1 = getValueTypeName(R[b]);
                         char* type2 = getValueTypeName(R[c]);
-                        vm->has_error = true;
+                        //vm->has_error = true;
                         invalidOperandsError(vm->name, chunk->lines[i], "/", type1, type2);
                     }
                 }
@@ -290,7 +290,7 @@ static void vm_run(VM* vm)
                     {
                         char* type1 = getValueTypeName(R[b]);
                         char* type2 = getValueTypeName(R[c]);
-                        vm->has_error = true;
+                        //vm->has_error = true;
                         invalidOperandsError(vm->name, chunk->lines[i], "//", type1, type2);
                     }
                 }
@@ -334,7 +334,7 @@ static void vm_run(VM* vm)
                     {
                         char* type1 = getValueTypeName(R[b]);
                         char* type2 = getValueTypeName(R[c]);
-                        vm->has_error = true;
+                        //vm->has_error = true;
                         invalidOperandsError(vm->name, chunk->lines[i], "%%", type1, type2);
                     }
                 }
@@ -420,7 +420,7 @@ static void vm_run(VM* vm)
                     {
                         char* type1 = getValueTypeName(R[b]);
                         char* type2 = getValueTypeName(R[c]);
-                        vm->has_error = true;
+                        //vm->has_error = true;
                         invalidOperandsError(vm->name, chunk->lines[i], "^", type1, type2);
                     }
                 }
@@ -473,7 +473,7 @@ static void vm_run(VM* vm)
                     //{
                         char* type1 = getValueTypeName(R[b]);
                         char* type2 = getValueTypeName(R[c]);
-                        vm->has_error = true;
+                        //vm->has_error = true;
                         invalidOperandsError(vm->name, chunk->lines[i], "<>", type1, type2);
                     //}
                 }
@@ -507,7 +507,7 @@ static void vm_run(VM* vm)
                     else
                     {
                         char* type1 = getValueTypeName(R[bx]);
-                        vm->has_error = true;
+                        //vm->has_error = true;
                         invalidOperandsError(vm->name, chunk->lines[i], "-", type1, NULL);
                     }
                 }
@@ -598,6 +598,11 @@ static void vm_run(VM* vm)
                     set_list_element(vm, &R[a], R[c], R[b].i, chunk->lines[i]);
                     //print_rvalue(R[a], true);
                 }
+                else if (isdict(R[a]))
+                {
+                    set_dict_key_value(vm,(ObjDict*) R[a].obj, R[b], R[c], chunk->lines[i]);
+                    //print_rvalue(R[a], true);
+                }
                 else
                 {
                     cannotAddElementNotList(vm->name, chunk->lines[i], getValueTypeName(R[a]));
@@ -634,7 +639,12 @@ static void vm_run(VM* vm)
                         indexError(vm->name, chunk->lines[i], "int", getValueTypeName(R[c]));
 
                     R[a] = listvalue(R[b], R[c].i);
-                    print_rvalue(R[b], true);
+                    //print_rvalue(R[b], true);
+                }
+                else if (isdict(R[b]))
+                {
+                    get_dict_value(vm, R[b].obj, R[c], chunk->lines[i]);
+                    //print_rvalue(R[b], true);
                 }
                 else
                 {
@@ -652,6 +662,8 @@ static void vm_run(VM* vm)
 
                 R[a].type = VAL_OBJ;
                 R[a].obj = allocate_dict(vm, b, c);
+
+                //print_rvalue(R[a], true);
 
                 break;
             }
@@ -961,7 +973,7 @@ void vm_execute(Chunk* main_chunk, const char* name)
         exit(1);
     }
     vm->frame_count = 0;
-    vm->has_error = false;
+    //vm->has_error = false;
     vm->stack_top = vm->stack;
     vm->name = name;
     vm->objects = NULL;

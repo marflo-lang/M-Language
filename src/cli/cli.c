@@ -287,6 +287,7 @@ int main(void)
         */
         CodeGen* G = generator_init(s->src, config.script_path, &C->ir, &C->constants);
         Chunk* mainChunk = generate_bydecode(G);
+        //mainChunk->register_capacity = compiler_regs_used(C);
 
 #if (defined(DEBUG) && DEBUG == 1) && (defined(CODEGEN_DEBUG) && CODEGEN_DEBUG == 1)
         codegen_print(G);

@@ -1,6 +1,6 @@
 #pragma once
-#include "../frontend/lexer.h"
 #include "print.h"
+#include "../frontend/lexer.h"
 
 #include <stdio.h>
 #include <stdarg.h>
@@ -29,6 +29,7 @@ void expectedToClose(const char* expected, const char* close, const char* got, c
 void compilerError(const char* message, const char* name, Location location, ...);
 
 // Errores del runtime
+typedef struct VM VM;
 void runtimeError(const char* message, const char* name, int line, ...);
 void invalidOperandsError(const char* name, int line, const char* op, const char* type1, const char* type2);
 void typeError(const char* name, int line, const char* type1, const char* type2);

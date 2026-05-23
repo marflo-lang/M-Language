@@ -24,6 +24,29 @@ typedef struct
     Value* registers; // array of registers
 }CallFrame;
 
+typedef enum {
+    INVALID_OPERANDS_ERROR,
+    TYPES_ERROR,
+    ARITHMETIC_ERROR,
+    MEMORY_ERROR,
+    INTERNAL_ERROR,
+    ASSIGNMENT_ERROR,
+    RESIZE_LIST_ERROR,
+    RESIZE_DICT_ERROR,
+    INDEX_OUT_OF_BOUNDS_ERROR,
+    ATTEMPED_TO_INDEX_NO_COLLECTION_ERROR,
+    INDEX_ERROR,
+    INVALID_KEY_TYPE_ERROR,
+} RErrorType;
+
+typedef struct
+{
+    bool has_error;
+    char message[512];
+    int line;
+    RErrorType type;
+} RuntimeError;
+
 struct VM
 {
     CallFrame frames[MAX_FRAMES];
@@ -31,8 +54,7 @@ struct VM
     
     Value stack[M_MAXSTACK];
     Value* stack_top;
-    bool has_error;
-    char* error_message;
+    RuntimeError error;
     const char* name;
     GCObject* objects;
     size_t bytes_allocated;

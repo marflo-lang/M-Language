@@ -1,4 +1,5 @@
 #include "err.h"
+#include "../vm/vm.h"
 
 // Locales
 
@@ -44,12 +45,13 @@ static void printEndToCloseFormatError(Location l1, Location l2)
 
 void memoryCrash(const char* src)
 {
-    print("Error de memoria en ", src);
+    //print("Error de memoria en ", src);
+    printf("Error de memria en %s", src);
 }
 
 void printErr(const char* text, const char* src, int level)
 {
-    level = level == NULL ? 3 : level;
+    level = level == -1 ? 3 : level;
     printf("\033[1;31m");
     printf("%s:", src);
     printf("\033[0m");
@@ -172,8 +174,22 @@ void runtimeError(const char* message, const char* name, int line, ...)
     exit(1);
 }
 
+static void vm_raise_error(VM* vm, RErrorType type, int line, const char* format, ...)
+{
+    vm->error.has_error = true;
+    vm->error.line = line;
+    vm->error.type = type;
+    
+    va_list args;
+    va_start(args, format);
+    vsnprintf(vm->error.message, sizeof(vm->error.message), format, args);
+
+    va_end(args);
+}
+
 void invalidOperandsError(const char* name, int line, const char* op, const char* type1, const char* type2)
 {
+    //vm_raise_error(vm, INVALID_OPERANDS_ERROR, line)
     runtimeError("TypeError: Invalid operands '%s' and '%s' for operator '%s'", name, line, type1 != NULL ? type1 : "", type2 != NULL ? type2 : "", op);
 }
 

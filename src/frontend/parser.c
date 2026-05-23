@@ -496,36 +496,42 @@ static Expr* parser_list(Parser* P)
 
     Expr* tempElements[256];
     int elementAmount = 0;
-    printf("1\n");
-    while (true)
-    {
-        
-        if (elementAmount >= 256)
+    //printf("1\n");
+    if (!(P->current.type == M_RBRAKET))
+        while (true)
         {
-            syntaxError("too many elements in list", P->name, tempElements[elementAmount-1]->base.location);
-            end = tempElements[elementAmount - 1]->base.location.end;
-            if (P->current.type == M_RBRAKET)
-                advance(P);
-            break;
-        }
 
-        tempElements[elementAmount++] = parser_expression(P);
-        if (P->current.type == M_COMMA || P->previous.type == M_SEMICOLON)
-        {
-            if (P->current.type == M_COMMA) advance(P);
-            continue;
+            if (elementAmount >= 256)
+            {
+                syntaxError("too many elements in list", P->name, tempElements[elementAmount - 1]->base.location);
+                end = tempElements[elementAmount - 1]->base.location.end;
+                if (P->current.type == M_RBRAKET)
+                    advance(P);
+                break;
+            }
+
+            tempElements[elementAmount++] = parser_expression(P);
+            if (P->current.type == M_COMMA || P->previous.type == M_SEMICOLON)
+            {
+                if (P->current.type == M_COMMA) advance(P);
+                continue;
+            }
+            else if (P->current.type == M_RBRAKET)
+            {
+                end = P->current.location.end;
+                advance(P);
+                break;
+            }
+            else
+            {
+                consume(P, M_RBRAKET, "] to close list literal");
+                break;
+            }
         }
-        else if (P->current.type == M_RBRAKET)
-        {
-            end = P->current.location.end;
-            advance(P);
-            break;
-        }
-        else
-        {
-            consume(P, M_RBRAKET, "] to close list literal");
-            break;
-        }
+    else
+    {
+        end = P->current.location.end;
+        advance(P);
     }
 
     Expr** elements = arena_allocator(P->arena, sizeof(Expr*) * elementAmount);
@@ -565,59 +571,69 @@ static Expr* parser_dict(Parser* P)
 
     Entry tempEntries[256];
     int entriesAmount = 0;
-
-    while (true)
-    {
-        if (entriesAmount >= 256)
+    if (!(P->current.type == M_RBRACE))
+        while (true)
         {
-            syntaxError("too many elements in list", P->name, tempEntries[entriesAmount - 1].value->base.location);
-            end = tempEntries[entriesAmount - 1].value->base.location.end;
-            if (P->current.type == M_RBRAKET)
+            if (entriesAmount >= 256)
+            {
+                syntaxError("too many elements in list", P->name, tempEntries[entriesAmount - 1].value->base.location);
+                end = tempEntries[entriesAmount - 1].value->base.location.end;
+                if (P->current.type == M_RBRAKET)
+                    advance(P);
+                break;
+            }
+
+            Expr* key = NULL;
+            if (P->current.type == M_LBRAKET)
+            {
                 advance(P);
-            break;
-        }
+                key = parser_expression(P);
+                consume(P, M_RBRAKET, "] to close [");
+            }
+            else if (P->current.type == M_V_IDENTIFIER)
+            {
+                key = parser_expression(P);
+            }
+            else
+            {
+                consume(P, M_LBRAKET, "[ or indetifier name");
+                return parser_expr_error(P);
+            }
 
-        Expr* key = NULL;
-        if (P->current.type == M_LBRAKET)
-        {
-            advance(P);
-            key = parser_expression(P);
-            consume(P, M_RBRAKET, "] to close [");
-        }
-        else if (P->current.type == M_V_IDENTIFIER)
-        {
-            key = parser_expression(P);
-        }
+            consume(P, M_ASSING, "= on dictionary");
 
-        consume(P, M_ASSING, "= on dictionary");
+            Expr* value = parser_expression(P);
 
-        Expr* value = parser_expression(P);
+            Entry entry;
+            entry.expr.base.location = locationCPos(key->base.location.begin, value->base.location.end);
+            entry.expr.base.ttype = NODE_EXPR;
+            entry.expr.expr_type = EXPR_ENTRY;
+            entry.key = key;
+            entry.value = value;
 
-        Entry entry;
-        entry.expr.base.location = locationCPos(key->base.location.begin, value->base.location.end);
-        entry.expr.base.ttype = NODE_EXPR;
-        entry.expr.expr_type = EXPR_ENTRY;
-        entry.key = key;
-        entry.value = value;
+            tempEntries[entriesAmount++] = entry;
 
-        tempEntries[entriesAmount++] = entry;
-
-        if (P->current.type == M_COMMA || P->previous.type == M_SEMICOLON)
-        {
-            if (P->current.type == M_COMMA) advance(P);
-            continue;
+            if (P->current.type == M_COMMA || P->previous.type == M_SEMICOLON)
+            {
+                if (P->current.type == M_COMMA) advance(P);
+                continue;
+            }
+            else if (P->current.type == M_RBRACE)
+            {
+                end = P->current.location.end;
+                advance(P);
+                break;
+            }
+            else
+            {
+                consume(P, M_RBRAKET, "} to close dictionary literal");
+                break;
+            }
         }
-        else if (P->current.type == M_RBRACE)
-        {
-            end = P->current.location.end;
-            advance(P);
-            break;
-        }
-        else
-        {
-            consume(P, M_RBRAKET, "} to close dictionary literal");
-            break;
-        }
+    else
+    {
+        end = P->current.location.end;
+        advance(P);
     }
 
     Entry* entries = arena_allocator(P->arena, sizeof(Entry) * entriesAmount);
@@ -1627,7 +1643,7 @@ static void print_stmt(Parser* P, Stmt* stmt, const char* prefix, bool isLast)
     }
 }
 
-void parser_print(Parser* P, StmtBlock* block)
+void parser_print(Parser* P, Stmt* block)
 {
     printf("===== PARSER DEBUG =====\n");
     printf("----- AST nodes -----\n");

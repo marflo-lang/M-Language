@@ -64,7 +64,7 @@ typedef struct Value
 
     union
     {
-        int i;
+        int64_t i;
         double f;
         bool b;
         GCObject* obj;
@@ -85,6 +85,7 @@ typedef struct
 
 typedef struct
 {
+    uint32_t hash;
     Value key;
     Value value;
 } DictEntry;
@@ -107,7 +108,7 @@ typedef struct
 
     union
     {
-        int i;
+        int64_t i;
         double f;
         bool b;
         struct
@@ -175,6 +176,7 @@ inline int listlenvalue(Value o);
 #define isobject(o)     (ttype(o) == VAL_OBJ)
 inline bool isstring(Value o);
 inline bool islist(Value o);
+inline bool isdict(Value o);
 
 //#define isstring(o)    (ttype(o) == VAL_STRING)
  
@@ -190,6 +192,8 @@ void set_list_element(VM* vm, Value* o, Value element, int pos, int line);
 ObjList* allocate_list(VM* vm, int length, int capacity, bool fixed);
 void resize_list(VM* vm, ObjList* list, int newCapacity, int line);
 // dict
+void set_dict_key_value(VM* vm, ObjDict* dict, Value key, Value value, int line);
+Value get_dict_value(VM* vm, ObjDict* dict, Value key, int line);
 ObjDict* allocate_dict(VM* vm, int count, bool fixed);
 void resize_dict(VM* vm, ObjDict* dict, int newCapacity, int line);
 //inline void setstring(Value* o, const char* str, int len)

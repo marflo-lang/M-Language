@@ -260,7 +260,7 @@ static int symbol_define(Compiler* C, SymbolTable* T, Token name, bool isConst, 
     if (T->count >= T->capacity)
     {
         T->capacity = T->capacity < 8 ? 8 : T->capacity * 2;
-        Symbol* newData = realloc(T->data, sizeof(Symbol*) * T->capacity);
+        Symbol* newData = realloc(T->data, sizeof(Symbol) * T->capacity);
 
         if (newData == NULL)
         {
@@ -657,10 +657,10 @@ void compiler_stmt(Compiler* C, Stmt* stmt)
                 }
                 else
                 {
-                    value_reg = alloc_reg(C);
+                    //value_reg = alloc_reg(C);
                     Constant v = make_nan();
                     int k = const_add(&C->constants, v);
-                    ir_emit(&C->ir, IR_LOAD_CONST, value_reg, k, 0, var->values[var->valuesCount - 1]->base.location); // NaN, pendiente mejorar
+                    ir_emit(&C->ir, IR_LOAD_CONST, reg, k, 0, var->values[var->valuesCount - 1]->base.location); // NaN, pendiente mejorar
                 }
 
                 //if (reg != value_reg)

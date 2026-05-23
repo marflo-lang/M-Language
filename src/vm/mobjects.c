@@ -36,21 +36,87 @@ const char* getValueTypeName(Value v)
         return "Unrecognized type";
 }
 
+static uint32_t hash_bytes(const uint8_t* data, size_t length)
+{
+    uint32_t hash = 2166136261u;
+
+    for (size_t i = 0; i < length; i++)
+    {
+        hash ^= data[i];
+        hash *= 16777619;
+    }
+
+    return hash;
+}
+
+static uint32_t hash_uint64(uint64_t value)
+{
+    return hash_bytes((uint8_t*)&value, sizeof(uint64_t));
+}
+
+static uint32_t hash_double(double value)
+{
+    uint64_t bits;
+    memcpy(&bits, &value, sizeof(double));
+    return hash_uint64(bits);
+}
+
+static uint32_t hash_bool(bool value)
+{
+    return value ? 1231 : 1237;
+}
+
+static uint32_t hash_combine(uint32_t a, uint32_t b)
+{
+    return a ^ (b + 0x9e3779b9 + (a << 6) + (a >> 2));
+}
+
 static uint32_t hash_rvalue(VM* vm, int line, Value v)
 {
-    if (v.type == VAL_OBJ)
-        if (v.obj->objType == OBJ_STRING)
+    switch (v.type)
+    {
+        case VAL_INT:
         {
-            ObjString* string = (ObjString*)v.obj;
-            return string->hash;
+            uint32_t value_hash = hash_uint64((uint64_t) ivalue(v));
+            return hash_combine(VAL_INT, value_hash);
         }
-        else
-            invalidKeyType(vm->name, line, "int, float, string, boolean", getValueTypeName(v));
+        case VAL_FLOAT:
+        {
+            uint32_t value_hash = hash_double(fvalue(v));
+            return hash_combine(VAL_FLOAT, value_hash);
+        }
+        case VAL_BOOLEAN:
+        {
+            uint32_t value_hash = hash_bool(bvalue(v));
+            return hash_combine(VAL_BOOLEAN, value_hash);
+        }
+        case VAL_NIL:
+        {
+            return 1;
+        }
+        case VAL_NAN:
+        {
+            return 0;
+        }
+        case VAL_OBJ:
+        {
+            GCObject* obj = (GCObject*) v.obj;
+            if (obj->objType == OBJ_STRING)
+            {
+                ObjString* string = (ObjString*) obj;
+                return hash_combine(OBJ_STRING, string->hash);
+            }
+            else
+            {
+                invalidKeyType(vm->name, 0, "int, float, boolean, string", getValueTypeName(v));
+            }
+        }
+        default:
+        {
+            invalidKeyType(vm->name, 0, "int, float, boolean, string", getValueTypeName(v));
+        }
 
-    uint32_t hash = 2166136261u;
-    
-    
-
+    }
 }
 
 static bool rvalue_equals(Value a, Value b)
@@ -406,6 +472,8 @@ static DictEntry* find_entry(VM* vm, DictEntry* entries, int capacity, Value key
 
 void set_dict_key_value(VM* vm, ObjDict* dict, Value key, Value value, int line)
 {
+    if (isnil(key) || ismnan(key))
+        invalidKeyType(vm->name, line, "int, float, string, boolean", getValueTypeName(key));
     DictEntry* entry = find_entry(vm, dict->entries, dict->capacity, key, line);
 
     if (ismnan(entry->key))
@@ -414,11 +482,14 @@ void set_dict_key_value(VM* vm, ObjDict* dict, Value key, Value value, int line)
             cannotResizeDict(vm->name, line);
 
         if ((dict->count + 1) > dict->capacity * 0.75)
-            resize_dict(vm, dict, dict->capacity * 2, line);
+        {
+            resize_dict(vm, dict, (dict->capacity < 8) ? 8 : (dict->capacity * 2), line);
+            entry = find_entry(vm, dict->entries, dict->capacity, key, line);
+        }
 
         dict->count++;
     }
-
+    entry->hash = hash_rvalue(vm, line, key);
     entry->key = key;
     entry->value = value;
 }
@@ -437,31 +508,63 @@ void resize_dict(VM* vm, ObjDict* dict, int newCapacity, int line)
 
     if (newCapacity < dict->count)
         resizeFractured(vm->name, line, "dictionary because the new capacity is lower than old count");
-    size_t oldSize = sizeof(DictEntry) * dict->count;
+    DictEntry* oldEntries = dict->entries;
+    int oldCapacity = dict->capacity;
+
+    size_t oldSize = sizeof(DictEntry) * dict->capacity;
     size_t newSize = sizeof(DictEntry) * newCapacity;
-    DictEntry* entries = realloc(dict->entries, newSize);
+
+    DictEntry* entries = calloc(newCapacity, sizeof(DictEntry));
     if (entries == NULL)
     {
         memoryCrash("Dictionary Re-Allocation");
         exit(1);
     }
     // pendiente una zona aquí de inicializar con nil los elementos nuevos
+    for (int i = 0; i < oldCapacity; i++)
+    {
+        DictEntry* oldEntry = &oldEntries[i];
+
+        if (oldEntry->hash == 0)
+            continue;
+
+        uint32_t hash = oldEntry->hash;
+
+        int index = hash % newCapacity;
+
+        while (true)
+        {
+            DictEntry* newEntry = &entries[index];
+
+            if (ismnan(newEntry->key))
+            {
+                newEntry->hash = hash;
+                newEntry->key = oldEntry->key;
+                newEntry->value = oldEntry->value;
+
+                break;
+            }
+
+            index = (index + 1) % newCapacity;
+        }
+    }
+    free(oldEntries);
     dict->entries = entries;
-    dict->count = newCapacity;
+    dict->capacity = newCapacity;
     vm->bytes_allocated += newSize - oldSize;
 }
 
-ObjDict* allocate_dict(VM* vm, int count, bool fixed)
+ObjDict* allocate_dict(VM* vm, int capacity, bool fixed)
 {
+    capacity = (capacity < 8) ? 8 : capacity;
     ObjDict* obj = (ObjDict*) allocate_object(vm, sizeof(ObjDict), OBJ_DICTIONARY);
-
-    obj->capacity = count;
+    obj->capacity = capacity;
     obj->fixed = fixed;
-    obj->count = count;
+    obj->count = 0;
 
-    if (count > 0)
+    if (capacity> 0)
     {
-        obj->entries = calloc(count, sizeof(DictEntry));
+        obj->entries = calloc(capacity, sizeof(DictEntry));
 
         if (obj->entries == NULL)
         {
@@ -469,7 +572,7 @@ ObjDict* allocate_dict(VM* vm, int count, bool fixed)
             exit(1);
         }
 
-        vm->bytes_allocated += sizeof(DictEntry) * count;
+        vm->bytes_allocated += sizeof(DictEntry) * capacity;
     }
     else
     {
@@ -524,7 +627,7 @@ void print_rvalue(Value v, bool newLine)
 {
     if (isint(v))
     {
-        printf("int -> %d", v.i);
+        printf("int -> %u", v.i);
     }
     else if (isfloat(v))
     {
@@ -559,6 +662,31 @@ void print_rvalue(Value v, bool newLine)
             print_rvalue(list->values[i], false);
         }
         printf("]");
+    }
+    else if (isdict(v))
+    {
+        ObjDict* dict = (ObjDict*) v.obj;
+        printf("dictionary: capacity %d, count %d, fixed %s, values {", dict->capacity, dict->count, (dict->fixed == true) ? "true" : "false");
+        bool comma = false;
+        for (int i = 0; i < dict->capacity; i++)
+        {
+            DictEntry* entry = &dict->entries[i];
+            if (ismnan(entry->key) || ismnan(entry->value))
+                continue;
+            if (comma)
+                printf(", ");
+            else
+                comma = true;
+            printf("[");
+            print_rvalue(entry->key, false);
+            printf("] = ");
+            print_rvalue(entry->value, false);
+        }
+        printf("}");
+    }
+    else
+    {
+        printf("ERROR: Type %d unrecognize\n", ttype(v));
     }
 
     if (newLine == true)
