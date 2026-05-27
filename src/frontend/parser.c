@@ -24,6 +24,7 @@ static Expr* parser_unary(Parser* P);
 static Expr* parser_binary(Parser* P, Expr* left);
 static Expr* parser_prefix(Parser* P);
 static Expr* parser_posfix(Parser* P, Expr* left);
+static Expr* parser_fixed(Parser* P);
 static Expr* parser_list(Parser* P);
 static Expr* parser_dict(Parser* P);
 static Expr* parser_index(Parser* P, Expr* left);
@@ -72,7 +73,7 @@ ParserRule rules[] = {
     [M_LPAREN] = {parser_grouping, parser_grouping, PREC_ACCESS},
     [M_LBRAKET] = {parser_list, parser_index, PREC_ACCESS},
     [M_LBRACE] = {parser_dict, NULL, PREC_ACCESS},
-    [M_FIXED] = {parser_list, NULL, PREC_ACCESS},
+    [M_FIXED] = {parser_fixed, NULL, PREC_ACCESS},
 
     // or
     [M_OR] = {NULL, parser_binary, PREC_OR},
@@ -475,22 +476,70 @@ static Expr* new_fix(Parser* P, Token op, Expr* right, bool isPre)
     return (Expr*) fix;
 }
 
+static Expr* parser_fixed(Parser* P)
+{
+    Position begin = P->previous.location.begin;
+    Location fixedLoc = {0};
+    Expr* fixed = NULL;
+    consume(P, M_LPAREN, "( after fixed keyword");
+    if (P->current.type == M_RPAREN)
+    {
+        fixedLoc = locationCPos(begin, P->current.location.end);
+        advance(P);
+    }
+    else
+    {
+        fixed = parser_expression(P);
+        fixedLoc = locationCPos(begin, P->current.location.end);
+        consume(P, M_RPAREN, ") afetr fixed expression");
+    }
+
+    if (P->current.type == M_LBRACE)
+    {
+        advance(P);
+        Expr* dict = parser_dict(P);
+        if (fixed != NULL)
+        {
+            syntaxError("Cannot be an expression in fixed() with a dictionary ", P->name, fixed->base.location);
+            return parser_expr_error(P);
+        }
+
+        ((LiteralDictExpr*)dict)->fixed = true;
+        return dict;
+    }
+    else
+    {
+        advance(P);
+        Expr* list = parser_list(P);
+        if (fixed == NULL)
+        {
+            syntaxError("Expected an expression after fixed but got none ", P->name, fixedLoc);
+            return parser_expr_error(P);
+        }
+
+        ((LiteralListExpr*)list)->capacity = fixed;
+        ((LiteralListExpr*)list)->fixed = true;
+
+        return list;
+    }
+}
+
 static Expr* parser_list(Parser* P)
 {
-    Position begin;
-    Position end;
-    bool fixed = false;
-    Expr* capacity = NULL;
-    if (P->previous.type == M_FIXED)
-    {
-        begin = P->previous.location.begin;
-        fixed = true;
-        consume(P, M_LPAREN, "( after keyword fixed");
-        capacity = parser_expression(P);
-        consume(P, M_RPAREN, ") after fixed amount");
-    }
-    if (!fixed)
-        begin = P->previous.location.begin;
+    Position begin = P->previous.location.begin;
+    Position end = {0};
+    //bool fixed = false;
+    //Expr* capacity = NULL;
+    //if (P->previous.type == M_FIXED)
+    //{
+    //    begin = P->previous.location.begin;
+    //    fixed = true;
+    //    consume(P, M_LPAREN, "( after keyword fixed");
+    //    capacity = parser_expression(P);
+    //    consume(P, M_RPAREN, ") after fixed amount");
+    //}
+    //if (!fixed)
+    //    begin = P->previous.location.begin;
     if (P->previous.type != M_LBRAKET)
         consume(P, M_LBRAKET, "[ to init list literal");
 
@@ -538,34 +587,34 @@ static Expr* parser_list(Parser* P)
     memcpy(elements, tempElements, sizeof(Expr*) * elementAmount);
     
     LiteralListExpr* list = arena_allocator(P->arena, sizeof(LiteralListExpr));
-
+    
     list->expr.base.location = locationCPos(begin, end);
     list->expr.base.ttype = NODE_EXPR;
     list->expr.expr_type = EXPR_LIST;
-    list->capacity = capacity;
+    list->capacity = NULL;
     list->count = elementAmount;
     list->elements = elements;
-    list->fixed = fixed;
+    list->fixed = false;
 
     return (Expr*) list;
 }
 
 static Expr* parser_dict(Parser* P)
 {
-    Position begin;
-    Position end;
-    bool fixed = false;
-    //Expr* capacity = NULL;
-    if (P->previous.type == M_FIXED)
-    {
-        begin = P->previous.location.begin;
-        fixed = true;
-        consume(P, M_LPAREN, "( after keyword fixed");
-        //capacity = parser_expression(P);
-        consume(P, M_RPAREN, ") after fixed amount");
-    }
-    if (!fixed)
-        begin = P->previous.location.begin;
+    Position begin = P->previous.location.begin;
+    Position end = {0};
+    //bool fixed = false;
+    ////Expr* capacity = NULL;
+    //if (P->previous.type == M_FIXED)
+    //{
+    //    begin = P->previous.location.begin;
+    //    fixed = true;
+    //    consume(P, M_LPAREN, "( after keyword fixed");
+    //    //capacity = parser_expression(P);
+    //    consume(P, M_RPAREN, ") after fixed amount");
+    //}
+    //if (!fixed)
+    //    begin = P->previous.location.begin;
     if (P->previous.type != M_LBRACE)
         consume(P, M_LBRAKET, "{ to init dictionary literal");
 
@@ -645,7 +694,7 @@ static Expr* parser_dict(Parser* P)
     dict->expr.expr_type = EXPR_DICT;
     //dict->capacity = capacity;
     dict->count = entriesAmount;
-    dict->fixed = fixed;
+    dict->fixed = false;
     dict->entries = entries;
 
     return (Expr*) dict;

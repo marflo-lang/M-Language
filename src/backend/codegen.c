@@ -4,6 +4,7 @@
 #include "../vm/vm.h"
 
 #include <malloc.h>
+#include <inttypes.h>
 
 static void emit(CodeGen* G, Instruction instr, Location loc)
 {
@@ -275,7 +276,7 @@ static void print_bytecode(CodeGen* G, int i)
         Constant v = chunk->constants[GET_Bx(inst)];
         printf("LOADK R%d K%d", GET_A(inst), GET_Bx(inst));
         if (v.type == C_INT)
-            printf(" [%d]", v.i);
+            printf(" [%"PRIi64"]", v.i);
         else if (v.type == C_FLOAT)
             printf(" [%f]", v.f);
         else if (v.type == C_BOOLEAN)
@@ -285,7 +286,7 @@ static void print_bytecode(CodeGen* G, int i)
         else if (v.type == C_NIL)
             printf(" [nil]");
         else if (v.type == C_STRING)
-            printf(" [%.*s]", v.string.length, v.string.chars);
+            printf(" ['%.*s']", v.string.length, v.string.chars);
 
     }
     else if (op == OP_LOAD_VAR)

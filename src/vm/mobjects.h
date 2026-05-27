@@ -188,11 +188,13 @@ inline bool isdict(Value o);
 ObjString* allocate_string(VM* vm, const char* text, int length);
 // list
 inline void set_list(Value* a, ObjList* list);
+ObjList* copy_list(VM* vm, ObjList* listToCopy, int line);
 void set_list_element(VM* vm, Value* o, Value element, int pos, int line);
 ObjList* allocate_list(VM* vm, int length, int capacity, bool fixed);
 void resize_list(VM* vm, ObjList* list, int newCapacity, int line);
 // dict
 void set_dict_key_value(VM* vm, ObjDict* dict, Value key, Value value, int line);
+ObjDict* copy_dict(VM* vm, ObjDict* dictToCopy, int line);
 Value get_dict_value(VM* vm, ObjDict* dict, Value key, int line);
 ObjDict* allocate_dict(VM* vm, int count, bool fixed);
 void resize_dict(VM* vm, ObjDict* dict, int newCapacity, int line);

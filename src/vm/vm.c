@@ -116,6 +116,16 @@ static void vm_run(VM* vm)
                     setfloat(R[a], fvalue(R[b]) + fvalue(R[c]));
                     //printf("ADD %f\n", R[a].f);
                 }
+                else if (islist(R[b]))
+                {
+                    set_list(&R[a], copy_list(vm, R[b].obj, chunk->lines[i]));
+                    set_list_element(vm, &R[a], R[c], -2, chunk->lines[i]);
+
+                    //printf("new -> ");
+                    //print_rvalue(R[a], true);
+                    //printf("old -> ");
+                    //print_rvalue(R[b], true);
+                }
                 else
                 {
                     // slow-path
@@ -189,6 +199,29 @@ static void vm_run(VM* vm)
                 else if (isfloat(R[b]) && isfloat(R[c]))
                 {
                     setfloat(R[a], fvalue(R[b]) * fvalue(R[c]));
+                }
+                else if (islist(R[b]))
+                {
+                    if (!isint(R[c]))
+                        typeError(vm->name, chunk->lines[i], "int", getValueTypeName(R[b]));
+
+                    int amountElements = listlenvalue(R[b]);
+                    int times = ivalue(R[c]);
+
+                    set_list(&R[a], copy_list(vm, R[b].obj, chunk->lines[i]));
+
+                    for (int i = 0; i < times; i++)
+                    {
+                        for (int j = 1; j <= amountElements; j++)
+                        {
+                            set_list_element(vm, &R[a], listvalue(R[b], j), -2, chunk->lines[i]);
+                        }
+                    }
+
+                    //printf("new -> ");
+                    //print_rvalue(R[a], true);
+                    //printf("old -> ");
+                    //print_rvalue(R[b], true);
                 }
                 else
                 {
@@ -460,6 +493,23 @@ static void vm_run(VM* vm)
                     //printf("R[a] = '%.*s'\n", ((ObjString*)R[a].obj)->length, ((ObjString*)R[a].obj)->chars);
 
                 }
+                else if (islist(R[b]) && islist(R[c]))
+                {
+                    int len = listlenvalue(R[b]) + listlenvalue(R[c]);
+                    set_list(&R[a], allocate_list(vm, 0, len, false));
+
+                    for (int j = 1; j <= listlenvalue(R[b]); j++)
+                    {
+                        set_list_element(vm, &R[a], listvalue(R[b], j), -2, chunk->lines[i]);
+                    }
+
+                    for (int j = 1; j <= listlenvalue(R[c]); j++)
+                    {
+                        set_list_element(vm, &R[a], listvalue(R[c], j), -2, chunk->lines[i]);
+                    }
+
+                    //print_rvalue(R[a], true);
+                }
                 else
                 {
                     // slow-path
@@ -650,6 +700,8 @@ static void vm_run(VM* vm)
                 {
                     attempedToIndexNoCollection(vm->name, chunk->lines[i], getValueTypeName(R[b]));
                 }
+
+                print_rvalue(R[b], true);
 
                 break;
             }

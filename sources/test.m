@@ -1,12 +1,13 @@
 
-var x = 0
-var d = {}
-while x < 100 {
-    d[x] = x * x
-    x++
-}
+var l = [5]
 
-var f = d[0]
+l *= 3
+l += 99
+
+var d = {["nombre"] = "Juan", ["list"] = l}
+d["this"] = d
+l[5] = l
+var n = d["nombre"]
 
 
 

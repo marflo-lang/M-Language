@@ -2,6 +2,8 @@
 #include "mobjects.h"
 #include "vm.h"
 
+#include <inttypes.h>
+
 static void intern_string(VM* vm, ObjString* string);
 
 extern inline Value make_rnil()
@@ -381,6 +383,16 @@ ObjList* allocate_list(VM* vm, int length, int capacity, bool fixed)
     return obj;
 }
 
+ObjList* copy_list(VM* vm, ObjList* listToCopy, int line)
+{
+    ObjList* newList = allocate_list(vm, listToCopy->length, listToCopy->capacity, listToCopy->fixed);
+    for (int i = 0; i < listToCopy->length; i++)
+    {
+        newList->values[i] = listToCopy->values[i];
+    }
+    return newList;
+}
+
 void set_list_element(VM* vm, Value* o, Value element, int pos, int line)
 {
     ObjList* list = (ObjList*) o->obj;
@@ -427,17 +439,9 @@ extern inline bool islist(Value o)
 
 extern inline int listlenvalue(Value o)
 {
-    if (o.type == VAL_OBJ)
-    {
-        GCObject* obj = (GCObject*)(o.obj);
-
-        if (obj->objType == OBJ_LIST)
-        {
-            ObjList* list = (ObjList*)obj;
-
-            return list->length;
-        }
-    }
+    GCObject* obj = (GCObject*)(o.obj);
+    ObjList* list = (ObjList*)obj;
+    return list->length;
 }
 
 extern inline Value listvalue(Value o, int pos)
@@ -448,6 +452,20 @@ extern inline Value listvalue(Value o, int pos)
         return (Value) { .type = VAL_NAN, .i = 0 };
     else
         return list->values[pos - 1];
+}
+
+ObjDict* copy_dict(VM* vm,  ObjDict* dictToCopy, int line)
+{
+    ObjDict* newDict = allocate_dict(vm, dictToCopy->capacity, dictToCopy->fixed);
+    newDict->count = dictToCopy->count;
+    for (int i = 0; i < dictToCopy->capacity; i++)
+    {
+        if (ismnan(dictToCopy->entries[i].key))
+            continue;
+        
+        newDict->entries[i] = dictToCopy->entries[i];
+    }
+    return newDict;
 }
 
 static DictEntry* find_entry(VM* vm, DictEntry* entries, int capacity, Value key, int line)
@@ -472,13 +490,15 @@ static DictEntry* find_entry(VM* vm, DictEntry* entries, int capacity, Value key
 
 void set_dict_key_value(VM* vm, ObjDict* dict, Value key, Value value, int line)
 {
-    if (isnil(key) || ismnan(key))
+    if (isnil(key) || ismnan(key) || islist(key) || isdict(key))
         invalidKeyType(vm->name, line, "int, float, string, boolean", getValueTypeName(key));
     DictEntry* entry = find_entry(vm, dict->entries, dict->capacity, key, line);
 
     if (ismnan(entry->key))
     {
-        if (dict->fixed)
+        //printf("Is nan ->");
+        print_rvalue(key, true);
+        if (dict->fixed && dict->count >= dict->capacity)
             cannotResizeDict(vm->name, line);
 
         if ((dict->count + 1) > dict->capacity * 0.75)
@@ -489,6 +509,7 @@ void set_dict_key_value(VM* vm, ObjDict* dict, Value key, Value value, int line)
 
         dict->count++;
     }
+
     entry->hash = hash_rvalue(vm, line, key);
     entry->key = key;
     entry->value = value;
@@ -504,7 +525,8 @@ Value get_dict_value(VM* vm, ObjDict* dict, Value key, int line)
 void resize_dict(VM* vm, ObjDict* dict, int newCapacity, int line)
 {
     if (dict->fixed)
-        cannotResizeDict(vm, line);
+        //cannotResizeDict(vm, line);
+        return;
 
     if (newCapacity < dict->count)
         resizeFractured(vm->name, line, "dictionary because the new capacity is lower than old count");
@@ -556,7 +578,7 @@ void resize_dict(VM* vm, ObjDict* dict, int newCapacity, int line)
 
 ObjDict* allocate_dict(VM* vm, int capacity, bool fixed)
 {
-    capacity = (capacity < 8) ? 8 : capacity;
+    //capacity = (capacity < 8) ? 8 : capacity;
     ObjDict* obj = (ObjDict*) allocate_object(vm, sizeof(ObjDict), OBJ_DICTIONARY);
     obj->capacity = capacity;
     obj->fixed = fixed;
@@ -627,7 +649,7 @@ void print_rvalue(Value v, bool newLine)
 {
     if (isint(v))
     {
-        printf("int -> %u", v.i);
+        printf("int -> %"PRId64, v.i);
     }
     else if (isfloat(v))
     {
@@ -648,7 +670,7 @@ void print_rvalue(Value v, bool newLine)
     else if (isstring(v))
     {
         ObjString* string = (ObjString*) v.obj;
-        printf("string: length %d, hash %d, text '%s'", string->length, string->hash, string->chars);
+        printf("string: length %d, hash %"PRIu32", text '%s'", string->length, string->hash, string->chars);
     }
     else if (islist(v))
     {
@@ -659,7 +681,14 @@ void print_rvalue(Value v, bool newLine)
         {
             if (i > 0)
                 printf(", ");
-            print_rvalue(list->values[i], false);
+            if (islist(list->values[i]) && list->values[i].obj == list)
+            {
+                printf("<recursion>");
+            }
+            else
+            {
+                print_rvalue(list->values[i], false);
+            }
         }
         printf("]");
     }
@@ -678,9 +707,23 @@ void print_rvalue(Value v, bool newLine)
             else
                 comma = true;
             printf("[");
-            print_rvalue(entry->key, false);
+            if (isdict(entry->key) && entry->key.obj == dict)
+            {
+                printf("<recursion>");
+            }
+            else
+            {
+                print_rvalue(entry->key, false);
+            }
             printf("] = ");
-            print_rvalue(entry->value, false);
+            if (isdict(entry->value) && entry->value.obj == dict)
+            {
+                printf("<recursion>");
+            }
+            else
+            {
+                print_rvalue(entry->value, false);
+            }
         }
         printf("}");
     }
