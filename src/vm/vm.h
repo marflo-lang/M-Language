@@ -131,7 +131,8 @@ bool vm_begin_call(VM* vm, Chunk* callee, int call_line, const char* func_name, 
 bool vm_finish_return(VM* vm, int return_reg_base, int returned_count);
 
 VMStatus vm_run(VM* vm);
-int vm_execute(Chunk* main_chunk, const char* name);
+VM* vm_init(Chunk* main_chunk, const char* name);
+int vm_execute(VM* vm);
 
 /* vm macros */
 

@@ -4,13 +4,29 @@
 
 #include <string.h>
 #include <stdint.h>
+#include <stdbool.h>
+
+typedef enum {
+    M_ANALYZE,
+    M_RUN,
+    M_TEST
+} M_State;
+
+typedef struct
+{
+    char** paths;
+    size_t count;
+    size_t capacity;
+} TestList;
 
 typedef struct
 {
     int typechecker_level;
     int optimizer_level;
     char* script_path;
-}Config;
+    M_State state;
+    TestList list;
+} Config;
 
 typedef struct
 {

@@ -603,7 +603,7 @@ VMStatus vm_run(VM* vm)
                         }
                     }
                     VM_BREAK_IF_ERROR(vm);
-                    print_rvalue(R[a], true);
+                    //print_rvalue(R[a], true);
 
                     break;
                 }
@@ -657,7 +657,7 @@ VMStatus vm_run(VM* vm)
                         }
                     }
                     VM_BREAK_IF_ERROR(vm);
-                    print_rvalue(R[a], true);
+                    //print_rvalue(R[a], true);
 
                     break;
                 }
@@ -729,7 +729,7 @@ VMStatus vm_run(VM* vm)
                         }
                     }
                     VM_BREAK_IF_ERROR(vm);
-                    print_rvalue(R[a], true);
+                    //print_rvalue(R[a], true);
 
                     break;
                 }
@@ -793,7 +793,7 @@ VMStatus vm_run(VM* vm)
                         }
                     }
                     VM_BREAK_IF_ERROR(vm);
-                    print_rvalue(R[a], true);
+                    //print_rvalue(R[a], true);
 
                     break;
                 }
@@ -857,7 +857,7 @@ VMStatus vm_run(VM* vm)
                         }
                     }
                     VM_BREAK_IF_ERROR(vm);
-                    print_rvalue(R[a], true);
+                    //print_rvalue(R[a], true);
 
                     break;
                 }
@@ -922,7 +922,7 @@ VMStatus vm_run(VM* vm)
                         }
                     }
                     VM_BREAK_IF_ERROR(vm);
-                    print_rvalue(R[a], true);
+                    //print_rvalue(R[a], true);
 
                     break;
                 }
@@ -1026,7 +1026,7 @@ VMStatus vm_run(VM* vm)
                         }
                     }
                     VM_BREAK_IF_ERROR(vm);
-                    print_rvalue(R[a], true);
+                    //print_rvalue(R[a], true);
 
                     break;
                 }
@@ -1126,7 +1126,7 @@ VMStatus vm_run(VM* vm)
                         invalidOperandsError(vm, chunk->lines[i], "<>", type1, type2);
                     }
                     VM_BREAK_IF_ERROR(vm);
-                    print_rvalue(R[a], true);
+                    //print_rvalue(R[a], true);
 
                     break;
                 }
@@ -1170,7 +1170,7 @@ VMStatus vm_run(VM* vm)
                         }
                     }
                     VM_BREAK_IF_ERROR(vm);
-                    print_rvalue(R[a], true);
+                    //print_rvalue(R[a], true);
 
                     break;
                 }
@@ -1270,7 +1270,7 @@ VMStatus vm_run(VM* vm)
                         cannotAddElementNotList(vm, chunk->lines[i], getValueTypeName(R[a]));
                     }
                     VM_BREAK_IF_ERROR(vm);
-                    print_rvalue(R[a], true);
+                    //print_rvalue(R[a], true);
 
                     break;
                 }
@@ -1289,7 +1289,7 @@ VMStatus vm_run(VM* vm)
                         cannotAddElementNotList(vm, chunk->lines[i], getValueTypeName(R[a]));
                     }
                     VM_BREAK_IF_ERROR(vm);
-                    print_rvalue(R[a], true);
+                    //print_rvalue(R[a], true);
 
                     break;
                 }
@@ -1319,7 +1319,7 @@ VMStatus vm_run(VM* vm)
                         attempedToIndexNoCollection(vm, chunk->lines[i], getValueTypeName(R[b]));
                     }
                     VM_BREAK_IF_ERROR(vm);
-                    print_rvalue(R[a], true);
+                    //print_rvalue(R[a], true);
 
                     break;
                 }
@@ -1452,7 +1452,7 @@ VMStatus vm_run(VM* vm)
                         else if (isstring(R[b]))
                         {
                             setboolean(R[a], (m_strcmp(R[b].obj, R[c].obj) < 0));
-                            print_rvalue(R[a], true);
+                            //print_rvalue(R[a], true);
                             //setboolean(R[a], slenvalue(R[b]) < slenvalue(R[c]));
 
                         }
@@ -1493,7 +1493,7 @@ VMStatus vm_run(VM* vm)
                         else if (isstring(R[b]))
                         {
                             setboolean(R[a], (m_strcmp(R[b].obj, R[c].obj) <= 0));
-                            print_rvalue(R[a], true);
+                            //print_rvalue(R[a], true);
                             //setboolean(R[a], slenvalue(R[b]) <= slenvalue(R[c]));
                         }
                         else if (isnil(R[b]))
@@ -1534,7 +1534,7 @@ VMStatus vm_run(VM* vm)
                         else if (isstring(R[b]))
                         {
                             setboolean(R[a], (m_strcmp(R[b].obj, R[c].obj) > 0));
-                            print_rvalue(R[a], true);
+                            //print_rvalue(R[a], true);
                             //setboolean(R[a], slenvalue(R[b]) > slenvalue(R[c]));
                         }
                         else if (isnil(R[b]))
@@ -1575,7 +1575,7 @@ VMStatus vm_run(VM* vm)
                         else if (isstring(R[b]))
                         {
                             setboolean(R[a], (m_strcmp(R[b].obj, R[c].obj) >= 0));
-                            print_rvalue(R[a], true);
+                            //print_rvalue(R[a], true);
                             //setboolean(R[a], slenvalue(R[b]) >= slenvalue(R[c]));
                         }
                         else if (isnil(R[b]))
@@ -1637,10 +1637,9 @@ VMStatus vm_run(VM* vm)
     return vm->error.has_error ? VM_RUNTIME_ERROR : VM_OK;
 }
 
-int vm_execute(Chunk* main_chunk, const char* name)
+VM* vm_init(Chunk* main_chunk, const char* name)
 {
-    setlocale(LC_NUMERIC, "C");
-    // VM
+    // Create vm
     VM* vm = calloc(1, sizeof(VM));
     if (vm == NULL)
     {
@@ -1648,20 +1647,15 @@ int vm_execute(Chunk* main_chunk, const char* name)
         exit(1);
     }
 
-    //memset(vm, 0, sizeof(VM));
-
     vm->stack_top = vm->stack;
     vm->name = name;
     vm_runtime_clear(vm);
 
     main_chunk->name = NULL;
     main_chunk->source = name;
+
     if (!vm_push_frame(vm, main_chunk, 0, name, 0))
-    {
-        vm_runtime_report(vm);
-        free(vm);
         return 1;
-    }
 
     // GC init
     vm->objects = NULL;
@@ -1673,16 +1667,17 @@ int vm_execute(Chunk* main_chunk, const char* name)
     vm->strings.count = 0;
     vm->strings.entries = NULL;
 
+    return vm;
+}
+
+int vm_execute(VM* vm)
+{
+    setlocale(LC_NUMERIC, "C");
+
     VMStatus status = vm_run(vm);
 
     if (status == VM_RUNTIME_ERROR || vm->error.has_error)
-    {
-        vm_runtime_report(vm);
-        free(vm);
         return 1;
-    }
-
-    free(vm);
     return 0;
 }
 
@@ -1748,47 +1743,3 @@ void chunk_write(Chunk* chunk, Instruction instr, int line)
     chunk->actual_instruction++;
 }
 
-/*int main(void)
-{
-    
-    int op = 1;
-    int a = 10;
-    int b = 56;
-    int c = 150;
-    int bx = 500;
-    int sBx = -150;
-
-    Instruction i = CREATE_ABC(op, a, b, c);
-    Instruction i2 = CREATE_ABx(op, a, bx);
-    Instruction i3 = CREATE_AsBx(op, a, sBx);
-    /*printf("====================\n");
-    printf("i = %" PRIu32 "\n", i);
-    printf("op = %d\n", GET_OPCODE(i));
-    printf("a = %d\n", GET_A(i));
-    printf("b = %d\n", GET_B(i));
-    printf("c = %d\n", GET_C(i));
-
-    printf("====================\n");
-    printf("i2 = %" PRIu32 "\n", i2);
-    printf("op = %d\n", GET_OPCODE(i2));
-    printf("a = %d\n", GET_A(i2));
-    printf("bx = %d\n", GET_Bx(i2));
-
-    printf("====================\n");
-    printf("i3 = %" PRIu32 "\n", i3);
-    printf("op = %d\n", GET_OPCODE(i3));
-    printf("a = %d\n", GET_A(i3));
-    printf("sBx = %d\n", GET_sBx(i3));*-/
-
-    Chunk chunk = {.cc = 0, .ic = 0,.rc = 5};
-    /*if (chunk == NULL)
-        return 1; *-/
-    //chunk.cc = 0;
-    //chunk.ic = 0;
-    chunk.instructions[chunk.ic] = i;
-    //chunk.rc = 5;
-
-    //vm_execute(&chunk);
-
-    return 0;
-}*/
