@@ -110,12 +110,12 @@ static uint32_t hash_rvalue(VM* vm, int line, Value v)
             }
             else
             {
-                invalidKeyType(vm->name, 0, "int, float, boolean, string", getValueTypeName(v));
+                invalidKeyType(vm, 0, "int, float, boolean, string", getValueTypeName(v));
             }
         }
         default:
         {
-            invalidKeyType(vm->name, 0, "int, float, boolean, string", getValueTypeName(v));
+            invalidKeyType(vm, 0, "int, float, boolean, string", getValueTypeName(v));
         }
 
     }
@@ -144,11 +144,11 @@ static bool rvalue_equals(Value a, Value b)
         return false;
 }
 
-static uint32_t hash_string(const char* text, int length)
+static uint32_t hash_string(const char* text, size_t length)
 {
     uint32_t hash = 2166136261u;
 
-    for (int i = 0; i < length; i++)
+    for (size_t i = 0; i < length; i++)
     {
         hash ^= (uint8_t) text[i];
         hash *= 16777619;
@@ -240,7 +240,7 @@ static GCObject* allocate_object(VM* vm, size_t size, ObjType type)
     return obj;
 }
 
-static ObjString* find_interned_string(VM* vm, const char* text, int length, uint32_t hash)
+static ObjString* find_interned_string(VM* vm, const char* text, size_t length, uint32_t hash)
 {
     StringTable* table = &vm->strings;
 
@@ -269,7 +269,7 @@ static ObjString* find_interned_string(VM* vm, const char* text, int length, uin
     }
 }
 
-ObjString* allocate_string(VM* vm, const char* text, int length)
+ObjString* allocate_string(VM* vm, const char* text, size_t length)
 {
     uint32_t hash = hash_string(text, length);
 
@@ -329,7 +329,7 @@ void resize_list(VM* vm, ObjList* list, int newCapacity, int line)
         cannotResizeList(vm, line);
 
     if (newCapacity < list->length)
-        resizeFractured(vm->name, line, "list because the new capacity is lower than old length");
+        resizeFractured(vm, line, "list because the new capacity is lower than old length");
     int oldCapacity = list->capacity;
     size_t oldSize = sizeof(Value) * list->capacity;
     size_t newSize = sizeof(Value) * newCapacity;
@@ -400,7 +400,7 @@ void set_list_element(VM* vm, Value* o, Value element, int pos, int line)
     if (pos > -2)
     {
         if (pos > list->length || (pos == -1 && list->length == 0))
-            indexoutofbound(vm->name, line, pos, list->length);
+            indexoutofbound(vm, line, pos, list->length);
 
         if (pos == -1)
             list->values[list->length - 1] = element;
@@ -491,7 +491,7 @@ static DictEntry* find_entry(VM* vm, DictEntry* entries, int capacity, Value key
 void set_dict_key_value(VM* vm, ObjDict* dict, Value key, Value value, int line)
 {
     if (isnil(key) || ismnan(key) || islist(key) || isdict(key))
-        invalidKeyType(vm->name, line, "int, float, string, boolean", getValueTypeName(key));
+        invalidKeyType(vm, line, "int, float, string, boolean", getValueTypeName(key));
     DictEntry* entry = find_entry(vm, dict->entries, dict->capacity, key, line);
 
     if (ismnan(entry->key))
@@ -499,7 +499,7 @@ void set_dict_key_value(VM* vm, ObjDict* dict, Value key, Value value, int line)
         //printf("Is nan ->");
         print_rvalue(key, true);
         if (dict->fixed && dict->count >= dict->capacity)
-            cannotResizeDict(vm->name, line);
+            cannotResizeDict(vm, line);
 
         if ((dict->count + 1) > dict->capacity * 0.75)
         {
@@ -529,7 +529,7 @@ void resize_dict(VM* vm, ObjDict* dict, int newCapacity, int line)
         return;
 
     if (newCapacity < dict->count)
-        resizeFractured(vm->name, line, "dictionary because the new capacity is lower than old count");
+        resizeFractured(vm, line, "dictionary because the new capacity is lower than old count");
     DictEntry* oldEntries = dict->entries;
     int oldCapacity = dict->capacity;
 
@@ -653,7 +653,16 @@ void print_rvalue(Value v, bool newLine)
     }
     else if (isfloat(v))
     {
-        printf("float -> %f", v.f);
+        char buffer[50];
+        //sprintf(buffer, "%.17g", v.f);
+        sprintf_s(buffer, 50, "%.17g", v.f);
+        if (strchr(buffer, '.') == NULL && strchr(buffer, 'e') == NULL)
+        {
+            //strcat(buffer, '.0');
+            strcat_s(buffer, 50, ".0");
+        }
+        //printf("float -> %.17g", v.f);
+        printf("float -> %s", buffer);
     }
     else if (isboolean(v))
     {
@@ -670,7 +679,7 @@ void print_rvalue(Value v, bool newLine)
     else if (isstring(v))
     {
         ObjString* string = (ObjString*) v.obj;
-        printf("string: length %d, hash %"PRIu32", text '%s'", string->length, string->hash, string->chars);
+        printf("string: length %zu, hash %"PRIu32", text '%s'", string->length, string->hash, string->chars);
     }
     else if (islist(v))
     {

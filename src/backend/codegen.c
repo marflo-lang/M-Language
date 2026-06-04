@@ -278,7 +278,18 @@ static void print_bytecode(CodeGen* G, int i)
         if (v.type == C_INT)
             printf(" [%"PRIi64"]", v.i);
         else if (v.type == C_FLOAT)
-            printf(" [%f]", v.f);
+        {
+            char buffer[50];
+            //sprintf(buffer, "%.17g", v.f);
+            sprintf_s(buffer, 50, "%.17g", v.f);
+            if (strchr(buffer, '.') == NULL && strchr(buffer, 'e') == NULL)
+            {
+                //strcat(buffer, '.0');
+                strcat_s(buffer, 50, ".0");
+            }
+            printf("[%s]", buffer);
+            //printf(" [%.17g]", v.f);
+        }
         else if (v.type == C_BOOLEAN)
             printf(" [%s]", v.b == true ? "true" : "false");
         else if (v.type == C_NAN)

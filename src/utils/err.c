@@ -22,8 +22,6 @@ static void printStartRuntimeFormatError(const char* name, int line)
 
 static void printEndFormatError(Location location)
 {
-    //print("at line", location.begin.line, "column", location.begin.column, "to column", location.end.column);
-    //print_without_end("at line")
     printf("at line %d column %d ", location.begin.line, location.begin.column);
     if (location.begin.line == location.end.line)
         printf("to column %d", location.end.column);
@@ -42,11 +40,20 @@ static void printEndToCloseFormatError(Location l1, Location l2)
 }
 
 // Globals
-
+/* Note that this function does not terminate the program flow */
 void memoryCrash(const char* src)
 {
-    //print("Error de memoria en ", src);
-    printf("Error de memria en %s", src);
+    printStartFormatError(src);
+    printf("\033[0m");
+    printf("\033[4;31m");
+    printf("Memory Crash:");
+    printf("\033[0m");
+    printf("\033[31m");
+    printf(" ");
+    printf("Error de memoria en %s", src);
+    printf("\033[0m");
+    printf("\n");
+    //printf("Error de memoria en %s\n", src);
 }
 
 void printErr(const char* text, const char* src, int level)
@@ -156,99 +163,117 @@ void compilerError(const char* message, const char* name, Location location, ...
 }
 
 // Runtime errors
-void runtimeError(const char* message, const char* name, int line, ...)
+void vm_runtime_raise(VM* vm, RErrorType type, int line, const char* format, ...)
 {
-    printStartRuntimeFormatError(name, line);
-    printf("\033[0m");
-    printf("\033[4;31m");
-    printf("\033[0m");
-    printf("\033[31m");
-    printf(" ");
-    va_list args;
-    va_start(args, message);
-    vprintf(message, args);
-    va_end(args);
-    printf(" ");
-    printf("\033[0m");
-    printf("\n");
-    exit(1);
-}
+    if (line <= 0)
+        line = vm_current_line(vm);
 
-static void vm_raise_error(VM* vm, RErrorType type, int line, const char* format, ...)
-{
-    vm->error.has_error = true;
     vm->error.line = line;
     vm->error.type = type;
-    
+    vm->error.has_error = true;
+
     va_list args;
     va_start(args, format);
     vsnprintf(vm->error.message, sizeof(vm->error.message), format, args);
-
     va_end(args);
 }
 
-void invalidOperandsError(const char* name, int line, const char* op, const char* type1, const char* type2)
+//void runtimeError(const char* message, const char* name, int line, ...)
+//{
+//    printStartRuntimeFormatError(name, line);
+//    printf("\033[0m");
+//    printf("\033[4;31m");
+//    printf("\033[0m");
+//    printf("\033[31m");
+//    printf(" ");
+//    va_list args;
+//    va_start(args, message);
+//    vprintf(message, args);
+//    va_end(args);
+//    printf(" ");
+//    printf("\033[0m");
+//    printf("\n");
+//    exit(1);
+//}
+
+void invalidOperandsError(VM* vm, int line, const char* op, const char* type1, const char* type2)
 {
-    //vm_raise_error(vm, INVALID_OPERANDS_ERROR, line)
-    runtimeError("TypeError: Invalid operands '%s' and '%s' for operator '%s'", name, line, type1 != NULL ? type1 : "", type2 != NULL ? type2 : "", op);
+    vm_runtime_raise(vm, INVALID_OPERANDS_ERROR, line,
+    "TypeError: Invalid operands '%s' and '%s' for operator '%s'", 
+     type1 != NULL ? type1 : "", 
+     type2 != NULL ? type2 : "",
+     op);
 }
 
-void typeError(const char* name, int line, const char* type1, const char* type2)
+void typeError(VM* vm, int line, const char* type1, const char* type2)
 {
-    runtimeError("TypeError: Expected '%s', but got '%s'", name, line, type1, type2);
+    vm_runtime_raise(vm, TYPES_ERROR, line,
+    "TypeError: Expected '%s', but got '%s'", 
+    type1, type2);
 }
 
-void arithmeticError(const char* name, int line)
+void arithmeticError(VM* vm, int line)
 {
-    runtimeError("ArithmeticError: Division By Zero", name, line);
+    vm_runtime_raise(vm, ARITHMETIC_ERROR, line,
+    "ArithmeticError: Division By Zero");
 }
 
-void memoryError(const char* name, int line)
+void memoryError(VM* vm, int line)
 {
-    runtimeError("MemoryError: An error occurred in memory allocation", name, line);
+    vm_runtime_raise(vm, MEMORY_ERROR, line,
+    "MemoryError: An error occurred in memory allocation");
 }
 
-void unknownType(const char* name, int line, int type)
+void unknownType(VM* vm, int line, int type)
 {
-    runtimeError("InternalError: Unknown Type; Number Enum Type %d", name, line, type);
+    vm_runtime_raise(vm, INTERNAL_ERROR, line,
+    "InternalError: Unknown Type; Number Enum Type %d", type);
 }
 
-void cannotAddElementNotList(const char* name, int line, const char* type)
+void cannotAddElementNotList(VM* vm, int line, const char* type)
 {
-    runtimeError("AssignmentError: Cannot assign an item to a non-list; Got type %s", name, line, type);
+    vm_runtime_raise(vm, ASSIGNMENT_ERROR, line,
+    "AssignmentError: Cannot assign an item to a non-list; Got type %s", type);
 }
 
-void cannotResizeList(const char* name, int line)
+void cannotResizeList(VM* vm, int line)
 {
-    runtimeError("ResizeListError: Cannot resize a fixed list", name, line);
+    vm_runtime_raise(vm, RESIZE_LIST_ERROR, line,
+    "ResizeListError: Cannot resize a fixed list");
 }
 
-void cannotResizeDict(const char* name, int line)
+void cannotResizeDict(VM* vm, int line)
 {
-    runtimeError("ResizeDictError: Cannot resize a fixed Dictionary", name, line);
+    vm_runtime_raise(vm, RESIZE_DICT_ERROR, line,
+    "ResizeDictError: Cannot resize a fixed Dictionary");
 }
 
-void resizeFractured(const char* name, int line, const char* complement)
+void resizeFractured(VM* vm, int line, const char* complement)
 {
-    runtimeError("ResizeFracturedError: Something was wrong when try to resize the %s", name, line, complement);
+    vm_runtime_raise(vm, INTERNAL_ERROR, line,
+    "InternalError: Something was wrong when try to resize the %s", complement);
 }
 
-void indexoutofbound(const char* name, int line, int pos, int capacity)
+void indexoutofbound(VM* vm, int line, int pos, int capacity)
 {
-    runtimeError("IndexOutOfBoundsError: Tried to index position %d when length is %d", name, line, pos, capacity);
+    vm_runtime_raise(vm, INDEX_OUT_OF_BOUNDS_ERROR, line,
+    "IndexOutOfBoundsError: Tried to index position %d when length is %d", pos, capacity);
 }
 
-void attempedToIndexNoCollection(const char* name, int line, const char* type)
+void attempedToIndexNoCollection(VM* vm, int line, const char* type)
 {
-    runtimeError("AttempedToIndexNoCollection: Attemped to index %s instead of collection", name, line, type);
+    vm_runtime_raise(vm, ATTEMPED_TO_INDEX_NO_COLLECTION_ERROR, line,
+    "AttempedToIndexNoCollection: Attemped to index %s instead of collection", type);
 }
 
-void indexError(const char* name, int line, const char* expected, const char* got)
+void indexError(VM* vm, int line, const char* expected, const char* got)
 {
-    runtimeError("IndexError: Expected index type '%s', but got '%s'", name, line, expected, got);
+    vm_runtime_raise(vm, INDEX_ERROR, line,
+    "IndexError: Expected index type '%s', but got '%s'", expected, got);
 }
 
-void invalidKeyType(const char* name, int line, const char* expected, const char* got)
+void invalidKeyType(VM* vm, int line, const char* expected, const char* got)
 {
-    runtimeError("InvalidKeyTypeError: Expected types '%s' to dict key, but got type '%s'", name, line, expected, got);
+    vm_runtime_raise(vm, INVALID_KEY_TYPE_ERROR, line,
+    "InvalidKeyTypeError: Expected types '%s' to dict key, but got type '%s'", expected, got);
 }

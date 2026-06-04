@@ -75,34 +75,6 @@ typedef struct
     int capacity;
 } IRList;
 
-//typedef enum
-//{
-//    VAL_NAN,
-//    VAL_NIL,
-//    VAL_INT,
-//    VAL_FLOAT,
-//    VAL_STRING,
-//    VAL_BOOLEAN
-//} CValueType;
-//
-//typedef struct
-//{
-//    CValueType type;
-//
-//    union
-//    {
-//        int i;
-//        double f;
-//        bool b;
-//
-//        struct
-//        {
-//            const char* chars;
-//            int length;
-//        } string;
-//    };
-//} Value;
-
 typedef struct
 {
     Token name;
@@ -133,6 +105,9 @@ typedef struct
     int capacity;
 } LocationInstructions;
 
+#define REG_INVALID     (-1)
+#define REG_POOL_MAX    256
+
 typedef struct
 {
     IRList ir;
@@ -144,6 +119,10 @@ typedef struct
     //LocationInstructions locations;
     int next_reg;
     int next_const;
+
+    /* Pool de registros temporales (los de variables viven en SymbolTable). */
+    int free_regs[REG_POOL_MAX];
+    int free_count;
 } Compiler;
 
 
@@ -155,6 +134,9 @@ Compiler* compiler_init(const char* src, const char* name);
 int compiler_expr(Compiler* C, Expr* expr, int target);
 void compiler_stmt(Compiler* C, Stmt* stmt);
 void compiler_program(Compiler* C, Stmt* stmt);
+
+/* Cantidad de registros usados (high water mark); para dimensionar el frame de la VM. */
+int compiler_regs_used(const Compiler* C);
 
 #if (defined(DEBUG) && DEBUG == 1) && (defined(COMPILER_DEBUG) && COMPILER_DEBUG == 1)
 void compiler_print(Compiler* C);

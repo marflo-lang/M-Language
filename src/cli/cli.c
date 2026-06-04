@@ -287,7 +287,7 @@ int main(void)
         */
         CodeGen* G = generator_init(s->src, config.script_path, &C->ir, &C->constants);
         Chunk* mainChunk = generate_bydecode(G);
-        //mainChunk->register_capacity = compiler_regs_used(C);
+        mainChunk->register_capacity = compiler_regs_used(C);
 
 #if (defined(DEBUG) && DEBUG == 1) && (defined(CODEGEN_DEBUG) && CODEGEN_DEBUG == 1)
         codegen_print(G);
@@ -313,14 +313,6 @@ int main(void)
         //free(s);
         //free(C);
         printf("M Languaje\n");
-
-        //print("");
-        //print("esto es una prueba del print");
-        //print(5);
-        //print(true);
-        //print(6.397);
-        //print('a');
-        //print("prueba de", "cadena multiple", 5, "concatenacion");
     }
 
     clock_t endAllProgram = clock();

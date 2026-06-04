@@ -178,53 +178,282 @@ static Token makeString(Lexer* L, char quote, Position pos)
     return t;
 }
 
-// mismo caso que makeString
-static Token makeNumber(Lexer* L, Position pos)
+inline static bool isBinaryDigit(char c)
 {
-    Token t;
+    return (c == '0') || (c == '1');
+}
 
-    /*if (t == NULL)
-    {
-        printErr("Error de memoria", "Lexer", 3);
-        exit(0);
-    }*/
+inline static bool isHexDigit(char c)
+{
+    return (isdigit(c)) || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f');
+}
 
-    LTokenType ttype = M_V_INT;
+inline static bool isOctalDigit(char c)
+{
+    return c >= '0' && c <= '7';
+}
 
-    while (isdigit(L->current))
-        consume(L);
+inline static bool isNumberSeparator(char c)
+{
+    return c == '_';
+}
 
-    if (L->current == '.' && isdigit((int) peek(L)))
-    {
-        ttype = M_V_FLOAT;
-        consume(L);
-
-        while (isdigit(L->current) || L->current == '.')
-        {
-            if (L->current == '.')
-                ttype = M_V_MALFORMED_NUMBER;
-            consume(L);
-        }
-    }
-    Location loc = locationCPosNum(pos, L->line, L->column, L->position);
-    /*if (loc == NULL)
-    {
-        printErr("Error de memoria", "Lexer", 3);
-        exit(0);
-    }*/
-
-    /*loc->begin = pos;
-    loc->end->line = L->line;
-    loc->end->column = L->column - 1;
-    loc->end->offset = L->position - 1;*/
-
-    t.type = ttype;
-    //printf("LastPos = %d, off = %d, length = %d\n", L->position, pos.offset, L->lastPosition.offset - pos.offset);
+inline static Token makeSimpleNumberToken(Lexer* L, Position pos, LTokenType type)
+{
+    Token t = {0};
+    t.type = type;
+    t.location = locationCPosNum(pos, L->line, L->column, L->position);
     t.length = L->position - pos.offset;
-    t.location = loc;
-
     return t;
 }
+
+inline static bool isNumberDelimiter(char c)
+{
+    return !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || (c == '_') || (c == '.'));
+}
+
+static void recoveryMalformedMode(Lexer* L)
+{
+    while (!isNumberDelimiter(L->current))
+        consumeNoLine(L);
+}
+
+static Token scanDecimalNumber(Lexer* L, Position pos)
+{
+    bool hasPoint = false;
+    bool hasExponent = false;
+    bool isMalformed = false;
+    bool needDigit = false;
+    LTokenType type = M_V_NIL;
+    if (L->src[L->lastPosition.offset] == '.')
+    {
+        type = M_V_FLOAT;
+        hasPoint = true;
+    }
+    while (isdigit(L->current) || isNumberSeparator(L->current) || L->current == '.' || L->current == 'e' || L->current == 'E')
+    {
+        if (L->current == '.')
+        {
+            if (hasExponent || needDigit)
+            {
+                type = M_V_MALFORMED_NUMBER;
+                isMalformed = true;
+            }
+            else
+            {
+                if (hasPoint || needDigit)
+                {
+                    type = M_V_MALFORMED_NUMBER;
+                    isMalformed = true;
+                }
+                else
+                {
+                    if (!isMalformed)
+                    {
+                        hasPoint = true;
+                        type = M_V_FLOAT;
+                    }
+                }
+            }
+        }
+        else if (L->current == 'e' || L->current == 'E')
+        {
+            if (hasExponent || needDigit)
+            {
+                type = M_V_MALFORMED_NUMBER;
+                isMalformed = true;
+            }
+            else
+            {
+                if (!isMalformed)
+                {
+                    hasExponent = true;
+                    type = M_V_FLOAT;
+                }
+                needDigit = true;
+            }
+
+            if (peek(L) == '+' || peek(L) == '-')
+                consumeNoLine(L); // este consume la e o E y el del final del loop consume el + o -
+        }
+        else if (isdigit(L->current))
+        {
+            if (needDigit)
+                needDigit = false;
+        }
+
+        consumeNoLine(L);
+    }
+
+    if (!isNumberDelimiter(L->current))
+    {
+        type = M_V_MALFORMED_NUMBER;
+        isMalformed = true;
+        recoveryMalformedMode(L);
+    }
+
+    if (needDigit)
+        type = M_V_MALFORMED_NUMBER;
+    else if (!hasPoint && !hasExponent && !isMalformed)
+        type = M_V_INT;
+
+    return makeSimpleNumberToken(L, pos, type);
+}
+
+static Token scanHexNumber(Lexer* L, Position pos)
+{
+    LTokenType type = M_V_NIL;
+    consumeNoLine(L);
+    bool hasDigit = false;
+    bool isMalformed = false;
+    while (isHexDigit(L->current) || isNumberSeparator(L->current))
+    {
+        if (!hasDigit && !isNumberSeparator(L->current))
+            hasDigit = true;
+        consumeNoLine(L);
+    }
+
+    if (!isNumberDelimiter(L->current))
+    {
+        type = M_V_MALFORMED_NUMBER;
+        isMalformed = true;
+        recoveryMalformedMode(L);
+    }
+
+    if (hasDigit && !isMalformed)
+        type = M_V_INT;
+    else
+        type = M_V_MALFORMED_NUMBER;
+
+    return makeSimpleNumberToken(L, pos, type);
+    
+}
+
+static Token scanOctalNumber(Lexer* L, Position pos)
+{
+    LTokenType type = M_V_NIL;
+    consumeNoLine(L);
+    bool hasDigit = false;
+    bool isMalformed = false;
+    while (isOctalDigit(L->current) || isNumberSeparator(L->current))
+    {
+        if (!hasDigit && !isNumberSeparator(L->current))
+            hasDigit = true;
+        consumeNoLine(L);
+    }
+
+    if (!isNumberDelimiter(L->current))
+    {
+        type = M_V_MALFORMED_NUMBER;
+        isMalformed = true;
+        recoveryMalformedMode(L);
+    }
+
+    if (hasDigit && !isMalformed)
+        type = M_V_INT;
+    else
+        type = M_V_MALFORMED_NUMBER;
+    
+    return makeSimpleNumberToken(L, pos, type);
+}
+
+static Token scanBinaryNumber(Lexer* L, Position pos)
+{
+    LTokenType type = M_V_NIL;
+    consumeNoLine(L);
+    bool hasDigit = false;
+    bool isMalformed = false;
+    while (isBinaryDigit(L->current) || isNumberSeparator(L->current))
+    {
+        if (!hasDigit && !isNumberSeparator(L->current))
+            hasDigit = true;
+        consumeNoLine(L);
+    }
+
+    if (!isNumberDelimiter(L->current))
+    {
+        type = M_V_MALFORMED_NUMBER;
+        isMalformed = true;
+        recoveryMalformedMode(L);
+    }
+
+    if (hasDigit && !isMalformed)
+        type = M_V_INT;
+    else
+        type = M_V_MALFORMED_NUMBER;
+
+    return makeSimpleNumberToken(L, pos, type);
+}
+
+static Token makeNumber(Lexer* L, Position pos, char c)
+{
+    if (c == '0' && (L->current == 'x' || L->current == 'X'))
+    {
+        return scanHexNumber(L, pos);
+    }
+    else if (c == '0' && (L->current == 'o' || L->current == 'O'))
+    {
+        return scanOctalNumber(L, pos);
+
+    }
+    else if (c == '0' && (L->current == 'b' || L->current == 'B'))
+    {
+        return scanBinaryNumber(L, pos);
+    }
+    // si no es ni hexadecimal, ni octal ni binario, asumimos que es decimal base 10
+    else
+    {
+        return scanDecimalNumber(L, pos);
+    }
+}
+
+// mismo caso que makeString
+//static Token makeNumber(Lexer* L, Position pos)
+//{
+//    Token t;
+//
+//    /*if (t == NULL)
+//    {
+//        printErr("Error de memoria", "Lexer", 3);
+//        exit(0);
+//    }*/
+//
+//    LTokenType ttype = M_V_INT;
+//
+//    while (isdigit(L->current))
+//        consume(L);
+//
+//    if (L->current == '.' && isdigit((int) peek(L)))
+//    {
+//        ttype = M_V_FLOAT;
+//        consume(L);
+//
+//        while (isdigit(L->current) || L->current == '.')
+//        {
+//            if (L->current == '.')
+//                ttype = M_V_MALFORMED_NUMBER;
+//            consume(L);
+//        }
+//    }
+//    Location loc = locationCPosNum(pos, L->line, L->column, L->position);
+//    /*if (loc == NULL)
+//    {
+//        printErr("Error de memoria", "Lexer", 3);
+//        exit(0);
+//    }*/
+//
+//    /*loc->begin = pos;
+//    loc->end->line = L->line;
+//    loc->end->column = L->column - 1;
+//    loc->end->offset = L->position - 1;*/
+//
+//    t.type = ttype;
+//    //printf("LastPos = %d, off = %d, length = %d\n", L->position, pos.offset, L->lastPosition.offset - pos.offset);
+//    t.length = L->position - pos.offset;
+//    t.location = loc;
+//
+//    return t;
+//}
 
 static Token makeIdentifier(Lexer* L, Position pos, int length)
 {
@@ -434,9 +663,9 @@ static Token scanToken(Lexer* L)
             {
                 // /* Long Start Comment
                 // change to makeLongComment(L, begin)
-                Token t = makeToken(L, M_LONG_COMMENT_START, begin);
+                //Token t = makeToken(L, M_LONG_COMMENT_START, begin);
                 skipLongComment(L);
-                return t;
+                //return t;
             }
             else
             {
@@ -555,13 +784,15 @@ static Token scanToken(Lexer* L)
         case ',':
             return makeToken(L, M_COMMA, begin);
         case '.':
+            if (isdigit(L->current) || L->current == '_')
+                return makeNumber(L, begin, c);
             return makeToken(L, M_DOT, begin);
         case '#':
             // # short comment
             // change to makeShortComment(L, begin)
-            Token t = makeToken(L, M_SHORT_COMMENT, begin);
+            //Token t = makeToken(L, M_SHORT_COMMENT, begin);
             skipShortComments(L);
-            return t;
+            //return t;
         case '\0':
             //printf("Mmmm\n");
             return makeEOF(L, begin);
@@ -571,7 +802,7 @@ static Token scanToken(Lexer* L)
                 // number ya sea int o float
                 //printf("WELL 1\n");
                 //printf("AAAAAAAAAAAAAAAAAAAAAAAAA");
-                return makeNumber(L, begin);
+                return makeNumber(L, begin, c);
             }
             //printf(" -> %d\n", c);
             if (isalpha((unsigned char) c) || c == '_')

@@ -6,19 +6,28 @@
 #include <malloc.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
+#include <limits.h>
+#include <float.h>
 #include <locale.h>
+
+static void free_temp_reg(Compiler* C, int reg);
 
 static void begin_scope(SymbolTable* T)
 {
     T->scope_depth++;
 }
 
-static void end_scope(SymbolTable* T)
+static void end_scope(Compiler* C, SymbolTable* T)
 {
     T->scope_depth--;
 
     while (T->count > 0 && T->data[T->count - 1].scope_depth > T->scope_depth)
+    {
+        int reg = T->data[T->count - 1].reg;
         T->count--;
+        free_temp_reg(C, reg);
+    }
 }
 
 static bool value_equals(Constant a, Constant b)
@@ -45,9 +54,6 @@ static bool value_equals(Constant a, Constant b)
         case C_STRING:
         {
             return a.string.length == b.string.length && (strncmp(a.string.chars, b.string.chars, a.string.length) == 0);
-            //GCObject* objA = (GCObject*) a.obj;
-            //GCObject* objB = (GCObject*) b.obj;
-            //return objA == objB;
         }
 
         case C_NIL:
@@ -90,9 +96,9 @@ static bool compare_tokens(Token a, Token b, const char* src)
     ) == 0;
 }
 
-static Constant make_int(int v)
+static Constant make_int(int64_t v)
 {
-    Constant val;
+    Constant val = {0};
     val.type = C_INT;
     val.i = v;
     return val;
@@ -100,7 +106,7 @@ static Constant make_int(int v)
 
 static Constant make_float(double v)
 {
-    Constant val;
+    Constant val = {0};
     val.type = C_FLOAT;
     val.f = v;
     return val;
@@ -108,15 +114,15 @@ static Constant make_float(double v)
 
 static Constant make_boolean(bool v)
 {
-    Constant val;
+    Constant val = {0};
     val.type = C_BOOLEAN;
     val.b = v;
     return val;
 }
 
-static Constant make_string(const char* src, int offset, int length)
+static Constant make_string(const char* src, int offset, size_t length)
 {
-    Constant val;
+    Constant val = {0};
     val.type = C_STRING;
     val.string.chars = src + offset;
     val.string.length = length;
@@ -125,16 +131,49 @@ static Constant make_string(const char* src, int offset, int length)
 
 static Constant make_nil()
 {
-    Constant val;
+    Constant val = {0};
     val.type = C_NIL;
     return val;
 }
 
 static Constant make_nan()
 {
-    Constant val;
+    Constant val = {0};
     val.type = C_NAN;
     return val;
+}
+
+static void copyNumberWithoutSeparators(char* out, size_t outSize, const char* start, int length)
+{
+    int j = 0;
+    for (int i = 0; i < length; i++)
+    {
+        if (start[i] != '_' && (j + 1 < outSize))
+        {
+            out[j++] = start[i];
+        }
+    }
+    out[j] = '\0';
+}
+
+static void parseIntegerLiteral(Compiler* C, Token t, const char* buffer, int64_t* out, int base)
+{
+    char* endptr;
+    errno = 0;
+    const char* ptr = (base == 10) ? buffer : buffer + 2;
+    int64_t num = strtoll(ptr, &endptr, base);
+    if (errno == ERANGE)
+    {
+        // Desvordamiento
+        if (num == LLONG_MAX)
+            compilerError("Number Overflow; The number '%.*s' is too big", C->name, t.location, t.length, &C->src[t.location.begin.offset]);
+        else if (num == LLONG_MIN)
+            compilerError("Number Underflow; The number '%.*s' is too small", C->name, t.location, t.length, &C->src[t.location.begin.offset]);
+    }
+    else if (endptr == ptr || *endptr != '\0')
+        compilerError("Number Invalid; The number '%.*s' is invalid", C->name, t.location, t.length, &C->src[t.location.begin.offset]);
+    else
+        *out = num;
 }
 
 static Constant token_to_value(Compiler* C, Token t)
@@ -144,27 +183,49 @@ static Constant token_to_value(Compiler* C, Token t)
         case M_V_INT:
         {
             char buffer[64];
-            int length = t.length;
+            int64_t num = 0;
+            copyNumberWithoutSeparators(buffer, sizeof(buffer), C->src + t.location.begin.offset, t.length);
+            if (*buffer == '0' && (buffer[1] == 'x' || buffer[1] == 'X'))
+            {
+                // Hexadecimal
+                parseIntegerLiteral(C, t, buffer, &num, 16);
+                return make_int(num);
+            }
+            else if (*buffer == '0' && (buffer[1] == 'o' || buffer[1] == 'O'))
+            {
+                // Octal
+                parseIntegerLiteral(C, t, buffer, &num, 8);
+                return make_int(num);
+            }
+            else if ((*buffer == '0' && (buffer[1] == 'b' || buffer[1] == 'B')))
+            {
+                // Binario
+                parseIntegerLiteral(C, t, buffer, &num, 2);
+                return make_int(num);
+            }
+            else
+            {
+                // Decimal
+                parseIntegerLiteral(C, t, buffer, &num, 10);
+                return make_int(num);
+            }
 
-            if (length >= 64) length = 63;
-
-            memcpy(buffer, C->src+ t.location.begin.offset, length);
-            buffer[length] = '\0';
-
-            return make_int(atoi(buffer));
         }
         case M_V_FLOAT:
         {
-            setlocale(LC_NUMERIC, "C");
             char buffer[64];
-            int length = t.length;
+            copyNumberWithoutSeparators(buffer, sizeof(buffer), C->src + t.location.begin.offset, t.length);
+            char* endptr;
+            errno = 0;
 
-            if (length >= 64) length = 63;
+            double num = strtod(buffer, &endptr);
+            if (errno == ERANGE)
+                compilerError("Number Overflow; The number '%.*s' breaks the limits", C->name, t.location, t.length, &C->src[t.location.begin.offset]);
+            else if (endptr == buffer || *endptr != '\0')
+                compilerError("Number Invalid; The number '%.*s' is invalid", C->name, t.location, t.length, &C->src[t.location.begin.offset]);
+            else
+                return make_float(num);
 
-            memcpy(buffer, C->src + t.location.begin.offset, length);
-            buffer[length] = '\0';
-            
-            return make_float(atof(buffer));
         }
         case M_V_STRING:
         {
@@ -242,19 +303,58 @@ static int const_add(ConstTable* T, Constant v)
     return T->count++;
 }
 
+/* True si el registro pertenece a una variable/const activa en la tabla de símbolos. */
+static bool reg_is_local(/*const*/ Compiler* C, int reg)
+{
+    if (reg < 0)
+        return false;
+
+    for (int i = 0; i < C->symbol.count; i++)
+    {
+        if (C->symbol.data[i].reg == reg)
+            return true;
+    }
+
+    return false;
+}
+
 static int alloc_reg(Compiler* C)
 {
+    if (C->free_count > 0)
+        return C->free_regs[--C->free_count];
+
+    if (C->next_reg >= REG_POOL_MAX)
+    {
+        compilerError("Register limit exceeded (%d)", C->name, (Location) { 0 }, REG_POOL_MAX);
+    }
+
     return C->next_reg++;
 }
 
-static void free_reg(Compiler* C)
+/* Libera un registro temporal; nunca libera registros de variables. */
+static void free_temp_reg(Compiler* C, int reg)
 {
-    C->next_reg--;
+    if (reg < 0 || reg_is_local(C, reg))
+        return;
+
+    if (C->free_count >= REG_POOL_MAX)
+        return;
+
+    C->free_regs[C->free_count++] = reg;
+}
+
+/* Libera operandos temporales conservando resultado y variables. */
+static void free_expr_reg(Compiler* C, int reg, int keep_a, int keep_b)
+{
+    if (reg < 0)
+        return;
+
+    if (reg != keep_a && reg != keep_b)
+        free_temp_reg(C, reg);
 }
 
 static int symbol_define(Compiler* C, SymbolTable* T, Token name, bool isConst, const char* src)
 {
-    //int slot = T->count;
     int reg = alloc_reg(C);
 
     if (T->count >= T->capacity)
@@ -277,7 +377,6 @@ static int symbol_define(Compiler* C, SymbolTable* T, Token name, bool isConst, 
 
 static Symbol* symbols_resolve(SymbolTable* T, Token name, const char* src)
 {
-    //for (int i = 0; i < T->count; i++)
     for (int i = T->count - 1; i >= 0; i--)
     {
         if (compare_tokens(T->data[i].name, name, src))
@@ -321,13 +420,18 @@ Compiler* compiler_init(const char* src, const char* name)
     ir_init(&C->ir);
     symbols_init(&C->symbol);
     constants_init(&C->constants);
-    //locations_init(&C->locations);
     C->src = src;
     C->name = name;
     C->next_reg = 0;
     C->next_const = 0;
+    C->free_count = 0;
 
     return C;
+}
+
+int compiler_regs_used(/*const*/ Compiler* C)
+{
+    return C->next_reg;
 }
 
 void ir_init(IRList* list)
@@ -366,7 +470,6 @@ int compiler_expr(Compiler* C, Expr* expr, int target)
         case EXPR_LITERAL:
         {
             LiteralExpr* literal = (LiteralExpr*) expr;
-            //int r = alloc_reg(C);
             int r = (target > -1) ? target : alloc_reg(C);
 
             Constant v = token_to_value(C, literal->value);
@@ -381,18 +484,19 @@ int compiler_expr(Compiler* C, Expr* expr, int target)
             LiteralListExpr* list = (LiteralListExpr*) expr;
 
             int r = (target > -1) ? target : alloc_reg(C);
-
             int capacity = -1;
+
             if (list->capacity != NULL)
                 capacity = compiler_expr(C, list->capacity, -1);
 
             ir_emit(&C->ir, IR_CREATE_LIST, r, capacity, list->fixed, list->expr.base.location);
+            free_expr_reg(C, capacity, r, REG_INVALID);
 
             for (int i = 0; i < list->count; i++)
             {
                 int element = compiler_expr(C, list->elements[i], -1);
-                //ir_emit(C, IR_SET_INDEX, r, i, element, list->elements[i]->base.location);
                 ir_emit(C, IR_PUSH_LIST, r, element, 0, list->elements[i]->base.location);
+                free_expr_reg(C, element, r, REG_INVALID);
             }
 
             return r;
@@ -400,9 +504,7 @@ int compiler_expr(Compiler* C, Expr* expr, int target)
         case EXPR_DICT:
         {
             LiteralDictExpr* dict = (LiteralDictExpr*) expr;
-
             int r = (target > -1) ? target : alloc_reg(C);
-
             int count = dict->count;
             
             ir_emit(&C->ir, IR_CREATE_DICT, r, count, dict->fixed, dict->expr.base.location);
@@ -412,11 +514,9 @@ int compiler_expr(Compiler* C, Expr* expr, int target)
                 int key = compiler_expr(C, dict->entries[i].key, -1);
                 int value = compiler_expr(C, dict->entries[i].value, -1);
                 ir_emit(&C->ir, IR_SET_INDEX, r, key, value, locationCPos(dict->entries[i].key->base.location.begin, dict->entries[i].value->base.location.end));
+                free_expr_reg(C, key, r, REG_INVALID);
+                free_expr_reg(C, value, r, REG_INVALID);
             }
-
-            //dict->count;
-            dict->entries;
-            dict->fixed;
 
             return r;
         }
@@ -442,12 +542,12 @@ int compiler_expr(Compiler* C, Expr* expr, int target)
             IndexExpr* index = (IndexExpr*) expr;
 
             int reg = (target > -1) ? target : alloc_reg(C);
-
             int coll = compiler_expr(C, index->collection, -1);
-
             int ind = compiler_expr(C, index->index, -1);
 
             ir_emit(&C->ir, IR_GET_INDEX, reg, coll, ind, index->expr.base.location);
+            free_expr_reg(C, coll, reg, REG_INVALID);
+            free_expr_reg(C, ind, reg, REG_INVALID);
 
             return reg;
         }
@@ -455,11 +555,9 @@ int compiler_expr(Compiler* C, Expr* expr, int target)
         {
             BinaryExpr* binary = (BinaryExpr*) expr;
 
+            int r = (target > -1) ? target : alloc_reg(C);
             int left = compiler_expr(C, binary->left, -1);
             int right = compiler_expr(C, binary->right, -1);
-
-            //int r = alloc_reg(C);
-            int r = (target > -1) ? target : alloc_reg(C);
 
             IROpCode op;
 
@@ -485,16 +583,16 @@ int compiler_expr(Compiler* C, Expr* expr, int target)
             }
 
             ir_emit(&C->ir, op, r, left, right, binary->expr.base.location);
+            free_expr_reg(C, left, r, REG_INVALID);
+            free_expr_reg(C, right, r, REG_INVALID);
             return r;
         }
         case EXPR_UNARY:
         {
             UnaryExpr* unary = (UnaryExpr*) expr;
 
-            int right = compiler_expr(C, unary->right, -1);
-            //int r = alloc_reg(C);
             int r = (target > -1) ? target : alloc_reg(C);
-
+            int right = compiler_expr(C, unary->right, -1);
             IROpCode op;
 
             switch (unary->op.type)
@@ -505,6 +603,7 @@ int compiler_expr(Compiler* C, Expr* expr, int target)
             }
 
             ir_emit(&C->ir, op, r, right, 0, unary->expr.base.location);
+            free_expr_reg(C, right, r, REG_INVALID);
             return r;
         }
         case EXPR_POSTFIX:
@@ -533,7 +632,6 @@ int compiler_expr(Compiler* C, Expr* expr, int target)
 
 
             int reg = symbol->reg;
-
             int old = -1;
 
             if (!fix->isPre)
@@ -547,8 +645,6 @@ int compiler_expr(Compiler* C, Expr* expr, int target)
             int k = const_add(&C->constants, v);
             ir_emit(&C->ir, IR_LOAD_CONST, one, k, 0, fix->op.location); // Pendiente revisar comportamiento
 
-            //int result = (target > -1) ? target : reg;
-
             if (fix->op.type == M_INC)
             {
                 ir_emit(&C->ir, IR_ADD, reg, reg, one, fix->expr.base.location);
@@ -558,8 +654,7 @@ int compiler_expr(Compiler* C, Expr* expr, int target)
                 ir_emit(&C->ir, IR_SUB, reg, reg, one, fix->expr.base.location);
             }
 
-            //if (reg != result)
-                //ir_emit(&C->ir, IR_MOVE, reg, result, 0, fix->expr.base.location);
+            free_temp_reg(C, one);
 
             if (fix->isPre)
             {
@@ -576,7 +671,6 @@ int compiler_expr(Compiler* C, Expr* expr, int target)
         case EXPR_ERROR:
         {
             ErrorExpr* error = (ErrorExpr*) expr;
-
             compilerError(error->message, C->name, error->token.location, error->token.type == M_V_MALFORMED_NUMBER ? "Malformed Number" : "Malformed String");
         }
     }
@@ -594,20 +688,16 @@ static void compiler_assign(Compiler* C, Expr* lvalue, Expr* rvalue, Location la
         compilerError("Const '%.*s' cannot be modified", C->name, name->expr.base.location, name->name.length, &C->src[name->expr.base.location.begin.offset]);
 
     int reg = symbol->reg;
-    
-    int value_reg;
 
     if (rvalue != NULL)
     {
-        value_reg = compiler_expr(C, rvalue, reg);
+        compiler_expr(C, rvalue, reg);
     }
     else
     {
-        //ir_emit(&C->ir, IR_LOAD_CONST, value_reg, 0, 0, lastLoc); // NaN, pendiente mejorar
-        value_reg = alloc_reg(C);
         Constant v = make_nan();
         int k = const_add(&C->constants, v);
-        ir_emit(&C->ir, IR_LOAD_CONST, value_reg, k, 0, lastLoc);
+        ir_emit(&C->ir, IR_LOAD_CONST, reg, k, 0, lastLoc);
     }
 }
 
@@ -626,12 +716,12 @@ static void compiler_index_assign(Compiler* C, Expr* lvalue, Expr* rvalue)
         compilerError("Variable '%.*s' has not yet been declared. Consider declaring it before using it", C->name, name->expr.base.location, name->name.length, &C->src[name->expr.base.location.begin.offset]);
 
     int reg = symbol->reg;
-
     int ind = compiler_expr(C, index->index, -1);
-
     int value = compiler_expr(C, rvalue, -1);
 
     ir_emit(&C->ir, IR_SET_INDEX, reg, ind, value, index->expr.base.location);
+    free_expr_reg(C, ind, reg, REG_INVALID);
+    free_expr_reg(C, value, reg, REG_INVALID);
 }
 
 void compiler_stmt(Compiler* C, Stmt* stmt)
@@ -647,24 +737,18 @@ void compiler_stmt(Compiler* C, Stmt* stmt)
 
             for (int i = 0; i < var->namesCount; i++)
             {
-                //printf("line: %d, column: %d, offset: %d\n", var->names[i].location.begin.line, var->names[i].location.begin.column, var->names[i].location.begin.offset);
                 int reg = symbol_define(C, &C->symbol, var->names[i], var->isConst, C->src);
-                int value_reg;
 
                 if (i < var->valuesCount)
                 {
-                    value_reg = compiler_expr(C, var->values[i], reg);
+                    compiler_expr(C, var->values[i], reg);
                 }
                 else
                 {
-                    //value_reg = alloc_reg(C);
                     Constant v = make_nan();
                     int k = const_add(&C->constants, v);
                     ir_emit(&C->ir, IR_LOAD_CONST, reg, k, 0, var->values[var->valuesCount - 1]->base.location); // NaN, pendiente mejorar
                 }
-
-                //if (reg != value_reg)
-                    //ir_emit(&C->ir, IR_MOVE, reg, value_reg, 0, var->stmt.base.location);
             }
 
             return;
@@ -678,7 +762,7 @@ void compiler_stmt(Compiler* C, Stmt* stmt)
             for (int i = 0; i < block->count; i++)
                 compiler_stmt(C, block->statements[i]);
 
-            end_scope(&C->symbol);
+            end_scope(C, &C->symbol);
             return;
         }
 
@@ -686,9 +770,9 @@ void compiler_stmt(Compiler* C, Stmt* stmt)
         {
             StmtIf* ifstmt = (StmtIf*) stmt;
             int cond = compiler_expr(C, ifstmt->condition, -1);
-
             int jump_if_false = ir_emit_jump(&C->ir, IR_JUMP_IF_FALSE, cond, ifstmt->condition->base.location);
 
+            free_temp_reg(C, cond);
             compiler_stmt(C, ifstmt->ifBranch);
 
             int jump_end = 0;
@@ -715,37 +799,29 @@ void compiler_stmt(Compiler* C, Stmt* stmt)
             StmtWhile* whileStmt = (StmtWhile*) stmt;
 
             int current = ir_current(&C->ir);
-
             int cond = compiler_expr(C, whileStmt->condition, -1);
-
             int jump_if_false = ir_emit_jump(&C->ir, IR_JUMP_IF_FALSE, cond, whileStmt->condition->base.location);
-
+            free_temp_reg(C, cond);
             compiler_stmt(C, whileStmt->loopBranch);
-
             ir_emit(&C->ir, IR_JUMP, 0, current, 0, whileStmt->loopBranch->base.location);
 
             int nextR = ir_current(&C->ir);
-
             ir_patch(&C->ir, jump_if_false, nextR);
 
             return;
-
         }
 
         case STMT_FOR_NUMERIC:
         {
             StmtForNumeric* stmtForN = (StmtForNumeric*) stmt;
-
+            begin_scope(&C->symbol);
             int init = ir_current(&C->ir);
-
             compiler_stmt(C, stmtForN->from);
             
             int current = ir_current(&C->ir);
-
             int cond = compiler_expr(C, stmtForN->to, -1);
-
             int jump_if_false = ir_emit_jump(&C->ir, IR_JUMP_IF_FALSE, cond, stmtForN->to->base.location);
-
+            free_temp_reg(C, cond);
             compiler_stmt(C, stmtForN->loopBranch);
 
             if (stmtForN->step != NULL)
@@ -758,15 +834,13 @@ void compiler_stmt(Compiler* C, Stmt* stmt)
                 ir_emit(&C->ir, IR_LOAD_CONST, one, k, 0, locationCPos(stmtForN->to->base.location.end, stmtForN->to->base.location.end));
                 IRInstruction ir = C->ir.data[init];
                 ir_emit(&C->ir, IR_ADD, ir.a, ir.a, one, locationCPos(stmtForN->to->base.location.end, stmtForN->to->base.location.end));
-
+                free_temp_reg(C, one);
             }
 
             ir_emit(&C->ir, IR_JUMP, 0, current, 0, locationCPos(stmtForN->loopBranch->base.location.end, stmtForN->loopBranch->base.location.end));
-
             int nextR = ir_current(&C->ir);
-
             ir_patch(&C->ir, jump_if_false, nextR);
-
+            end_scope(C, &C->symbol);
 
             return;
         }
@@ -774,7 +848,8 @@ void compiler_stmt(Compiler* C, Stmt* stmt)
         case STMT_EXPR:
         {
             StmtExpr* stmtE = (StmtExpr*) stmt;
-            compiler_expr(C, stmtE->expr, -1);
+            int r = compiler_expr(C, stmtE->expr, -1);
+            free_temp_reg(C, r);
             return;
         }
 
@@ -804,7 +879,6 @@ void compiler_stmt(Compiler* C, Stmt* stmt)
             StmtCompoundAssing* compound = (StmtCompoundAssing*) stmt;
             
             int value = compiler_expr(C, compound->value, -1);
-
             Symbol* symbol = symbols_resolve(&C->symbol, ((NameExpr*)compound->target)->name, C->src);
 
             if (symbol == NULL)
@@ -814,9 +888,6 @@ void compiler_stmt(Compiler* C, Stmt* stmt)
                 compilerError("Const '%.*s' cannot be modified", C->name, compound->stmt.base.location, ((NameExpr*)compound->target)->name.length, &C->src[compound->target->base.location.begin.offset]);
 
             int target = symbol->reg;
-
-            //int r = alloc_reg(C);
-
             IROpCode op;
 
             switch (compound->op.type)
@@ -832,9 +903,7 @@ void compiler_stmt(Compiler* C, Stmt* stmt)
             default: op = IR_ADD; break; // temporal
             }
             ir_emit(&C->ir, op, target, target, value, compound->value->base.location);
-            
-            //if (target != r)
-                //ir_emit(&C->ir, IR_MOVE, target, r, 0, compound->stmt.base.location);
+            free_expr_reg(C, value, target, REG_INVALID);
 
             return;
         }
@@ -850,6 +919,7 @@ void compiler_stmt(Compiler* C, Stmt* stmt)
 
 void compiler_program(Compiler* C, Stmt* stmt)
 {
+    setlocale(LC_NUMERIC, "C");
     compiler_stmt(C, stmt);
     ir_emit(&C->ir, IR_HALT, 0, 0, 0, locationCPos(stmt->base.location.end, stmt->base.location.end));
 }

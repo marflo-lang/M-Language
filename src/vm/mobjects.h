@@ -51,7 +51,7 @@ typedef struct
 {
     GCObject gc;
 
-    int length;
+    size_t length;
     const char* chars;
 
     uint32_t hash;
@@ -114,7 +114,7 @@ typedef struct
         struct
         {
             const char* chars;
-            int length;
+            size_t length;
         } string;
     };
 } Constant;
@@ -185,7 +185,7 @@ inline bool isdict(Value o);
 #define setfloat(o, fl)  (o).type = VAL_FLOAT; (o).f = (fl)
 #define setboolean(o, bo)    (o).type = VAL_BOOLEAN; (o).b = (bo)
 // string
-ObjString* allocate_string(VM* vm, const char* text, int length);
+ObjString* allocate_string(VM* vm, const char* text, size_t length);
 // list
 inline void set_list(Value* a, ObjList* list);
 ObjList* copy_list(VM* vm, ObjList* listToCopy, int line);

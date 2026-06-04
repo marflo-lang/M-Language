@@ -28,19 +28,19 @@ void expectedToClose(const char* expected, const char* close, const char* got, c
 // Errores del Compiler
 void compilerError(const char* message, const char* name, Location location, ...);
 
-// Errores del runtime
+// Errores del runtime (marcan vm->error; no terminan el proceso)
 typedef struct VM VM;
-void runtimeError(const char* message, const char* name, int line, ...);
-void invalidOperandsError(const char* name, int line, const char* op, const char* type1, const char* type2);
-void typeError(const char* name, int line, const char* type1, const char* type2);
-void arithmeticError(const char* name, int line);
-void memoryError(const char* name, int line);
-void unknownType(const char* name, int line, int type);
-void cannotAddElementNotList(const char* name, int line, const char* type);
-void cannotResizeList(const char* name, int line);
-void cannotResizeDict(const char* name, int line);
-void resizeFractured(const char* name, int line, const char* complement);
-void indexoutofbound(const char* name, int line, int pos, int capacity);
-void attempedToIndexNoCollection(const char* name, int line, const char* type);
-void indexError(const char* name, int line, const char* expected, const char* got);
-void invalidKeyType(const char* name, int line, const char* expected, const char* got);
+//void runtimeError(const char* message, const char* name, int line, ...);
+void invalidOperandsError(VM* vm, int line, const char* op, const char* type1, const char* type2);
+void typeError(VM* vm, int line, const char* type1, const char* type2);
+void arithmeticError(VM* vm, int line);
+void memoryError(VM* vm, int line);
+void unknownType(VM* vm, int line, int type);
+void cannotAddElementNotList(VM* vm, int line, const char* type);
+void cannotResizeList(VM* vm, int line);
+void cannotResizeDict(VM* vm, int line);
+void resizeFractured(VM* vm, int line, const char* complement);
+void indexoutofbound(VM* vm, int line, int pos, int capacity);
+void attempedToIndexNoCollection(VM* vm, int line, const char* type);
+void indexError(VM* vm, int line, const char* expected, const char* got);
+void invalidKeyType(VM* vm, int line, const char* expected, const char* got);
