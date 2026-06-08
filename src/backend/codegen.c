@@ -200,7 +200,7 @@ Chunk* generate_bydecode(CodeGen* G)
 
             case IR_PUSH_LIST:
             {
-                emit(G, CREATE_ABx(OP_PUSH_LIST, ir->a, ir->b), loc);
+                emit(G, CREATE_ABC(OP_PUSH_LIST, ir->a, ir->b, ir->c), loc);
 
                 break;
             }
@@ -347,7 +347,7 @@ static void print_bytecode(CodeGen* G, int i)
     else if (op == OP_SET_INDEX)
         printf("SETINDEX R%d R%d R%d", GET_A(inst), GET_B(inst), GET_C(inst));
     else if (op == OP_PUSH_LIST)
-        printf("PUSHLIST R%d R%d", GET_A(inst), GET_Bx(inst));
+        printf("PUSHLIST R%d R%d %d", GET_A(inst), GET_B(inst), GET_C(inst));
     else if (op == OP_GET_INDEX)
         printf("GETINDEX R%d R%d R%d", GET_A(inst), GET_B(inst), GET_C(inst));
     else if (op == OP_CREATE_DICT)

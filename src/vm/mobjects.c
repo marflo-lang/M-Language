@@ -111,11 +111,13 @@ static uint32_t hash_rvalue(VM* vm, int line, Value v)
             else
             {
                 invalidKeyType(vm, 0, "int, float, boolean, string", getValueTypeName(v));
+                return 0;
             }
         }
         default:
         {
             invalidKeyType(vm, 0, "int, float, boolean, string", getValueTypeName(v));
+            return 0;
         }
 
     }
@@ -326,10 +328,17 @@ extern inline int slenvalue(Value o)
 void resize_list(VM* vm, ObjList* list, int newCapacity, int line)
 {
     if (list->fixed)
+    {
         cannotResizeList(vm, line);
+        return;
+    }
 
     if (newCapacity < list->length)
+    {
         resizeFractured(vm, line, "list because the new capacity is lower than old length");
+        return;
+    }
+
     int oldCapacity = list->capacity;
     size_t oldSize = sizeof(Value) * list->capacity;
     size_t newSize = sizeof(Value) * newCapacity;
@@ -397,13 +406,16 @@ void set_list_element(VM* vm, Value* o, Value element, int pos, int line)
 {
     ObjList* list = (ObjList*) o->obj;
 
-    if (pos > -2)
+    if (pos != 0)
     {
-        if (pos > list->length || (pos == -1 && list->length == 0))
+        if (abs(pos) > list->length)
+        {
             indexoutofbound(vm, line, pos, list->length);
+            return;
+        }
 
-        if (pos == -1)
-            list->values[list->length - 1] = element;
+        if (pos < 0)
+            list->values[list->length + pos] = element;
         else
             list->values[pos - 1] = element;
     }
@@ -448,10 +460,18 @@ extern inline Value listvalue(Value o, int pos)
 {
     GCObject* obj = (GCObject*)(o.obj);
     ObjList* list = (ObjList*)obj;
-    if (pos > list->length)
-        return (Value) { .type = VAL_NAN, .i = 0 };
+    if (pos != 0)
+    {
+        if (abs(pos) > list->length)
+            return (Value) { .type = VAL_NAN, .i = 0 };
+
+        if (pos < 0)
+            return list->values[list->length + pos];
+        else
+            return list->values[pos - 1];
+    }
     else
-        return list->values[pos - 1];
+        return (Value) { .type = VAL_NAN, .i = 0 };
 }
 
 ObjDict* copy_dict(VM* vm,  ObjDict* dictToCopy, int line)
@@ -491,15 +511,22 @@ static DictEntry* find_entry(VM* vm, DictEntry* entries, int capacity, Value key
 void set_dict_key_value(VM* vm, ObjDict* dict, Value key, Value value, int line)
 {
     if (isnil(key) || ismnan(key) || islist(key) || isdict(key))
+    {
         invalidKeyType(vm, line, "int, float, string, boolean", getValueTypeName(key));
+        return;
+    }
+
     DictEntry* entry = find_entry(vm, dict->entries, dict->capacity, key, line);
 
     if (ismnan(entry->key))
     {
         //printf("Is nan ->");
-        print_rvalue(key, true);
+        //print_rvalue(key, true);
         if (dict->fixed && dict->count >= dict->capacity)
+        {
             cannotResizeDict(vm, line);
+            return;
+        }
 
         if ((dict->count + 1) > dict->capacity * 0.75)
         {
@@ -529,7 +556,11 @@ void resize_dict(VM* vm, ObjDict* dict, int newCapacity, int line)
         return;
 
     if (newCapacity < dict->count)
+    {
         resizeFractured(vm, line, "dictionary because the new capacity is lower than old count");
+        return;
+    }
+
     DictEntry* oldEntries = dict->entries;
     int oldCapacity = dict->capacity;
 

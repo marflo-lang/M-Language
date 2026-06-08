@@ -567,7 +567,7 @@ VMStatus vm_run(VM* vm)
                     else if (islist(R[b]))
                     {
                         set_list(&R[a], copy_list(vm, R[b].obj, chunk->lines[i]));
-                        set_list_element(vm, &R[a], R[c], -2, chunk->lines[i]);
+                        set_list_element(vm, &R[a], R[c], 0, chunk->lines[i]);
                     }
                     else
                     {
@@ -691,7 +691,7 @@ VMStatus vm_run(VM* vm)
                         {
                             for (int j = 1; j <= amountElements; j++)
                             {
-                                set_list_element(vm, &R[a], listvalue(R[b], j), -2, chunk->lines[i]);
+                                set_list_element(vm, &R[a], listvalue(R[b], j), 0, chunk->lines[i]);
                             }
                         }
                     }
@@ -1073,12 +1073,12 @@ VMStatus vm_run(VM* vm)
 
                         for (int j = 1; j <= listlenvalue(R[b]); j++)
                         {
-                            set_list_element(vm, &R[a], listvalue(R[b], j), -2, chunk->lines[i]);
+                            set_list_element(vm, &R[a], listvalue(R[b], j), 0, chunk->lines[i]);
                         }
 
                         for (int j = 1; j <= listlenvalue(R[c]); j++)
                         {
-                            set_list_element(vm, &R[a], listvalue(R[c], j), -2, chunk->lines[i]);
+                            set_list_element(vm, &R[a], listvalue(R[c], j), 0, chunk->lines[i]);
                         }
 
                     }
@@ -1253,13 +1253,7 @@ VMStatus vm_run(VM* vm)
                             VM_BREAK_IF_ERROR(vm);
                         }
 
-                        if (ivalue(R[b]) < -1 || ivalue(R[b]) == 0)
-                        {
-                            indexoutofbound(vm, chunk->lines[i], ivalue(R[b]), ((ObjList*)(R[a].obj))->length);
-                            VM_BREAK_IF_ERROR(vm);
-                        }
-
-                        set_list_element(vm, &R[a], R[c], R[b].i, chunk->lines[i]);
+                        set_list_element(vm, &R[a], R[c], ivalue(R[b]), chunk->lines[i]);
                     }
                     else if (isdict(R[a]))
                     {
@@ -1278,11 +1272,16 @@ VMStatus vm_run(VM* vm)
                 case OP_PUSH_LIST:
                 {
                     uint8_t a = GET_A(instr);
-                    uint8_t bx = GET_Bx(instr);
+                    uint8_t b = GET_B(instr);
+                    uint8_t c = GET_C(instr);
 
                     if (islist(R[a]))
                     {
-                        set_list_element(vm, &R[a], R[bx], -2, chunk->lines[i]);
+                        //set_list_element(vm, &R[a], R[bx], 0, chunk->lines[i]);
+                        for (int i = 0; i < c; i++)
+                        {
+                            set_list_element(vm, &R[a], R[b + i], 0, chunk->lines[i]);
+                        }
                     }
                     else
                     {
@@ -1308,7 +1307,7 @@ VMStatus vm_run(VM* vm)
                             VM_BREAK_IF_ERROR(vm);
                         }
 
-                        R[a] = listvalue(R[b], R[c].i);
+                        R[a] = listvalue(R[b], ivalue(R[c]));
                     }
                     else if (isdict(R[b]))
                     {

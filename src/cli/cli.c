@@ -79,7 +79,6 @@ static Stmt* cli_execute_frontend(Source* s, Config* config)
     Lexer* L = Lexer_init(s->src, config->script_path);
     TokenArray* Tokens = Lexer_execute(L);
 #if (defined(DEBUG) && DEBUG == 1) && (defined(LEXER_DEBUG) && LEXER_DEBUG == 1)
-    // Debug Lexer
     Lexer_print(L, Tokens);
 #endif
 
@@ -98,7 +97,7 @@ static Stmt* cli_execute_frontend(Source* s, Config* config)
     /*
     ========== Parser ==========
     */
-    //-*
+    
     Parser* P = parser_init(Tokens, A, config->script_path, s->src);
     Stmt* stmt = parser_execute(P);
 
@@ -113,7 +112,7 @@ static Chunk* cli_execute_backend(Source* s, Config* config, Stmt* stmt)
 {
     /*
         ========== Compiler ==========
-        */
+    */
 
     Compiler* C = compiler_init(s->src, config->script_path);
     compiler_program(C, stmt);
@@ -124,6 +123,7 @@ static Chunk* cli_execute_backend(Source* s, Config* config, Stmt* stmt)
     /*
     ========== Code Generator ==========
     */
+
     CodeGen* G = generator_init(s->src, config->script_path, &C->ir, &C->constants);
     Chunk* mainChunk = generate_bydecode(G);
     mainChunk->register_capacity = compiler_regs_used(C);
@@ -183,8 +183,6 @@ static M_VMResult cli_execute_test(Source* s, const char* name)
 
 static printInfoTest(const char* name, double time, bool pass)
 {
-    //printf("\033[1;32m");
-    //printf("\033[31m");
     if (pass)
     {
         printf("\033[1;32m");
@@ -203,7 +201,7 @@ static printInfoTest(const char* name, double time, bool pass)
 
 static void printEndTesting(size_t success, size_t failed, size_t all)
 {
-    printf("Run %zu tests, ", all);
+    printf("Ran %zu tests, ", all);
     printf("\033[32m");
     printf("Successful %zu", success);
     printf("\033[0m");
@@ -262,7 +260,7 @@ static bool parse_input(char* input, Config* config)
     // Validar inicio con "m"
     if (strncmp(input, "m ", 2) != false)
     {
-        printErr("Error: debe iniciar con 'm'", "CLI", 3);
+        printErr("Error: debe iniciar con 'm '", "CLI", 3);
         return false;
     }
 
@@ -286,8 +284,9 @@ static bool parse_input(char* input, Config* config)
             if (config->typechecker_level != -1)
             {
                 printErr("Typechecker duplicado", "CLI", 3);
-                if (DEBUG)
-                    printf("Typecheker level -> %d\n", config->typechecker_level);
+#ifdef DEBUG
+                printf("Typecheker level -> %d\n", config->typechecker_level);
+#endif
                 return false;
             }
 
@@ -296,17 +295,18 @@ static bool parse_input(char* input, Config* config)
 
             {
                 printErr("Formato de typechecker invalido", "CLI", 3);
-                if (DEBUG)
-                    printf("token -> |%s|\n", token);
-
+#ifdef DEBUG
+                printf("token -> |%s|\n", token);
+#endif
                 return false;
             }
 
             if (level < 0 || level > 2)
             {
                 printErr("Nivel de typechecker invalido, se esperaba un numero entre 0 y 2", "CLI", 3);
-                if (DEBUG)
-                    printf("level -> %d\n", level);
+#ifdef DEBUG
+                printf("level -> %d\n", level);
+#endif
                 return false;
             }
 
@@ -317,23 +317,26 @@ static bool parse_input(char* input, Config* config)
         {
             if (config->optimizer_level != -1) {
                 printErr("Optimizer duplicado", "CLI", 3);
-                if (DEBUG)
-                    printf("Optimizer level -> %d\n", config->optimizer_level);
+#ifdef DEBUG
+                printf("Optimizer level -> %d\n", config->optimizer_level);
+#endif
                 return false;
             }
 
             int level;
             if (sscanf_custom(token, "optimizer %d", &level) != 1) {
                 printErr("Formato invalido en optimizer", "CLI", 3);
-                if (DEBUG)
-                    printf("token -> %s\n", token);
+#ifdef DEBUG
+                printf("token -> %s\n", token);
+#endif
                 return false;
             }
 
             if (level < 0 || level > 5) {
                 printErr("Nivel de optimizer invalido", "CLI", 3);
-                if (DEBUG)
-                    printf("level -> %d\n", level);
+#ifdef DEBUG
+                printf("level -> %d\n", level);
+#endif
                 return false;
             }
 
@@ -343,18 +346,49 @@ static bool parse_input(char* input, Config* config)
         else if (strncmp(token, "run", 3) == 0)
         {
             token += 4;
+            token = trim_left(token);
 
             if (!has_valid_extension(token)) {
                 printErr("Extension invalida", "CLI", 3);
 #ifdef DEBUG
-                    printf("extension -> %s\n", token);
+                printf("extension -> %s\n", token);
 #endif
                 return false;
             }
 
             config->script_path = token;
             config->state = M_RUN;
-            return 1; // éxito
+            return true;
+        }
+        else if (strncmp(token, "analyze", 7) == 0)
+        {
+            token += 8;
+            token = trim_left(token);
+
+            if (!has_valid_extension(token))
+            {
+                printErr("Extension invalida", "CLI", 3);
+                return false;
+            }
+
+            config->script_path = token;
+            config->state = M_ANALYZE;
+            return true;
+        }
+        else if (strncmp(token, "compile", 7) == 0)
+        {
+            token += 8;
+            token = trim_left(token);
+
+            if (!has_valid_extension(token))
+            {
+                printErr("Extension invalida", "CLI", 3);
+                return false;
+            }
+
+            config->script_path = token;
+            config->state = M_COMPILE;
+            return true;
         }
         else if (strncmp(token, "test", 4) == 0)
         {
@@ -368,8 +402,9 @@ static bool parse_input(char* input, Config* config)
         else
         {
             printErr("Token invalido %s", "CLI", 3);
-            if (DEBUG)
-                printf("token -> %s\n", token);
+#ifdef DEBUG
+            printf("token -> %s\n", token);
+#endif
             return false;
         }
 
@@ -378,8 +413,9 @@ static bool parse_input(char* input, Config* config)
     }
 
     printErr("Falta la ruta del script", "CLI", 3);
-    if (DEBUG)
+#ifdef DEBUG
         printf("Text -> %s", input);
+#endif
     return false;
 
 }
@@ -469,7 +505,6 @@ static void findTestWindows(TestList* list, const char* path)
             if (ext && (strcmp(ext, ".m") == 0 || strcmp(ext, ".mar") == 0))
             {
                 addTest(list, fullpath);
-                //printf("Test encontrado: %s\n", fullpath);
             }
         }
     } while (FindNextFileA(hFind, &findFileData));
@@ -505,7 +540,7 @@ static void findTestsPosix(TestList* list, const char* path) {
         else {
             const char* ext = strrchr(entry->d_name, '.');
             if (ext && (strcmp(ext, ".m") == 0 || strcmp(ext, ".mar") == 0)) {
-                printf("Test encontrado: %s\n", fullpath);
+                addTest(list, fullpath);
             }
         }
     }
@@ -518,6 +553,29 @@ static void findTests(TestList* list, const char* path)
 }
 #endif
 
+static void cli_run_analysis(Config* config)
+{
+    printf("PATH -> %s\n", config->script_path);
+    /*
+    ========== CLI ==========
+    */
+    Source* s = read_file(config->script_path);
+
+#if (defined(DEBUG) && DEBUG == 1) && (defined(CLI_DEBUG) && CLI_DEBUG == 1)
+    printf("===== CLI DEBUG =====\n");
+    printf("----- Configs -----\n");
+    printf("Typechecker level: %d\n", config.typechecker_level);
+    printf("Optimizer lever: %d\n", config.optimizer_level);
+    printf("Script: %s\n", config.script_path);
+    printf("src: `%s`\n", s->src);
+    printf("length: %zd\n", s->length);
+    printf("===== END CLI DEBUG =====\n");
+#endif
+    clock_t startAllAnalyze = clock();
+    cli_execute_frontend(s, config);
+    clock_t endAllAnalyze = clock();
+    printf("The time it took to analyze the entire program is %f seconds\n", (double)(endAllAnalyze - startAllAnalyze) / CLOCKS_PER_SEC);
+}
 
 int main(void)
 {
@@ -527,11 +585,10 @@ int main(void)
     //char input[] = "-- optimizer 5, sources/test.m";
     //char input[] = "-- optimizer 5, typechecker 2, sources/test.m";
     //char input[] = "-- sources/test.m";
-    //char input[] = "m run sources/test.m";
-    char input[] = "m test";
+    char input[] = "m run sources/test.m";
+    //char input[] = "m test";
     
     Config config;
-    //clock_t startAllProgram = clock();
     if (parse_input(input, &config))
     {
         if (config.state == M_RUN)
@@ -542,8 +599,7 @@ int main(void)
             */
             Source* s = read_file(config.script_path);
 
-    #if (defined(DEBUG) && DEBUG == 1) && (defined(CLI_DEBUG) && CLI_DEBUG == 1)
-            // Debug CLI
+#if (defined(DEBUG) && DEBUG == 1) && (defined(CLI_DEBUG) && CLI_DEBUG == 1)
             printf("===== CLI DEBUG =====\n");
             printf("----- Configs -----\n");
             printf("Typechecker level: %d\n", config.typechecker_level);
@@ -552,7 +608,7 @@ int main(void)
             printf("src: `%s`\n", s->src);
             printf("length: %zd\n", s->length);
             printf("===== END CLI DEBUG =====\n");
-    #endif
+#endif
             clock_t startAllProgram = clock();
             cli_run(s, &config);
             clock_t endAllProgram = clock();
@@ -569,6 +625,11 @@ int main(void)
         }
         else if (config.state == M_ANALYZE)
         {
+            cli_run_analysis(&config);
+            return 0;
+        }
+        else if (config.state == M_COMPILE)
+        {
             printf("PATH -> %s\n", config.script_path);
             /*
             ========== CLI ==========
@@ -576,7 +637,6 @@ int main(void)
             Source* s = read_file(config.script_path);
 
 #if (defined(DEBUG) && DEBUG == 1) && (defined(CLI_DEBUG) && CLI_DEBUG == 1)
-            // Debug CLI
             printf("===== CLI DEBUG =====\n");
             printf("----- Configs -----\n");
             printf("Typechecker level: %d\n", config.typechecker_level);
@@ -586,89 +646,17 @@ int main(void)
             printf("length: %zd\n", s->length);
             printf("===== END CLI DEBUG =====\n");
 #endif
-            clock_t startAllAnalyze = clock();
-            cli_execute_frontend(s, &config);
-            clock_t endAllAnalyze = clock();
-            printf("The time it took to analyze the entire program is %f seconds\n", (double)(endAllAnalyze - startAllAnalyze) / CLOCKS_PER_SEC);
-            return 0;
+            clock_t startCompile = clock();
+            Stmt* stmt = cli_execute_frontend(s, &config);
+            cli_execute_backend(s, &config, stmt);
+            clock_t endCompile = clock();
+            printf("The time it took to compile all program is %f seconds\n", (double)(endCompile - startCompile) / CLOCKS_PER_SEC);
         }
         else
         {
             printf("Inavlid State: %d\n", config.state);
             return 1;
         }
-        return 1;
-        /*
-        ========== Lexer ==========
-        */
-        clock_t startCompile = clock();
-        Source* s = NULL;
-        Lexer* L = Lexer_init(s->src, config.script_path);
-        TokenArray* Tokens = Lexer_execute(L);
-#if (defined(DEBUG) && DEBUG == 1) && (defined(LEXER_DEBUG) && LEXER_DEBUG == 1)
-        // Debug Lexer
-            Lexer_print(L, Tokens);
-#endif
-
-        /*
-        ========== Arena Allocator ==========
-        */
-
-        Arena A;
-        arena_init(&A, 1024 * 1024); // 1 MB
-
-        /*
-        ========== Parser ==========
-        */
-        //-*
-        Parser* P = parser_init(Tokens, &A, config.script_path, s->src);
-        Stmt* stmt = parser_execute(P);
-
-#if (defined(DEBUG) && DEBUG == 1) && (defined(PARSER_DEBUG) && PARSER_DEBUG == 1)
-        parser_print(P, stmt);
-#endif
-        
-        /*
-        ========== Compiler ==========
-        */
-        
-        Compiler* C = compiler_init(s->src, config.script_path);
-        compiler_program(C, stmt);
-#if (defined(DEBUG) && DEBUG == 1) && (defined(COMPILER_DEBUG) && COMPILER_DEBUG == 1)
-        compiler_print(C);
-#endif 
-
-        /*
-        ========== Code Generator ==========
-        */
-        CodeGen* G = generator_init(s->src, config.script_path, &C->ir, &C->constants);
-        Chunk* mainChunk = generate_bydecode(G);
-        mainChunk->register_capacity = compiler_regs_used(C);
-
-#if (defined(DEBUG) && DEBUG == 1) && (defined(CODEGEN_DEBUG) && CODEGEN_DEBUG == 1)
-        codegen_print(G);
-#endif 
-
-        clock_t endCompile = clock();
-        printf("The time it took to compile the program is %f seconds\n", (double)(endCompile - startCompile) / CLOCKS_PER_SEC);
-        
-        /*
-        ========== Virtual Machine ==========
-        */
-
-        clock_t startRun = clock();
-        VM* vm = vm_init(mainChunk, config.script_path);
-        int result = vm_execute(vm);
-        if (result > 0)
-            vm_runtime_report(vm);
-
-        clock_t endRun = clock();
-        printf("The time it took to run the program is %f seconds\n", (double)(endRun - startRun) / CLOCKS_PER_SEC);
     }
-
-    clock_t endAllProgram = clock();
-    //printf("The time it took to run the entire program is %f seconds\n", (double)(endAllProgram - startAllProgram) / CLOCKS_PER_SEC);
-    printf("M Languaje\n");
-    return 0;
 }
 

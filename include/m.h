@@ -1,10 +1,10 @@
 #pragma once
 
 #define M_VERSION   0.1
-#define DEBUG   1
+#define DEBUG           1
 
-#define CLI_DEBUG   1
-#define LEXER_DEBUG 1
+#define CLI_DEBUG       0
+#define LEXER_DEBUG     0
 #define PARSER_DEBUG    1
 #define AST_DETALLADO   1
 #define COMPILER_DEBUG  0

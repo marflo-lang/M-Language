@@ -1,29 +1,16 @@
 
-var str1 = "hola"
-var str2 = "hola"
+var a = 5
 
-var r1 = str1 < str2
-var r2 = str1 <= str2
-var r3 = str1 > str2
-var r4 = str1 >= str2
+var b = 5 + 6
 
-var str3 = "hola"
-var str4 = "Hola"
+var c = b - 7
 
-var r5 = str3 < str4
-var r6 = str3 <= str4
-var r6 = str3 > str4
-var r8 = str3 >= str4
+var d = 3
 
-var str5 = "Hola"
-var str6 = "hola"
+var list = [5, 8*2, a, [5, 9*6-3, c]]
 
-var r9 = str5 < str6
-var r10 = str5 <= str6
-var r11 = str5 > str6
-var r12 = str5 >= str6
+var d = "hola"
 
-var s =  "hola" < 5
 
 
 

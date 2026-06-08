@@ -8,6 +8,7 @@
 
 typedef enum {
     M_ANALYZE,
+    M_COMPILE,
     M_RUN,
     M_TEST
 } M_State;

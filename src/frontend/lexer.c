@@ -572,19 +572,7 @@ static Token makeError(Lexer* L, const char* context, Position pos)
 static Token scanToken(Lexer* L)
 {
     skipWhiteSpace(L);
-    //printf("M -> %c\n", L->current);
     Position begin = pos(L->line, L->column, L->position);
-
-    /*if (begin == NULL)
-    {
-        printErr("Error de memoria", "Lexer", 3);
-        exit(0);
-    }*/
-
-    /*begin.line = L->line;
-    begin.column = L->column;
-    begin.offset = L->position;*/
-
     char c = L->current;
     consume(L);
 
@@ -663,9 +651,9 @@ static Token scanToken(Lexer* L)
             {
                 // /* Long Start Comment
                 // change to makeLongComment(L, begin)
-                //Token t = makeToken(L, M_LONG_COMMENT_START, begin);
+                Token t = makeToken(L, M_LONG_COMMENT_START, begin);
                 skipLongComment(L);
-                //return t;
+                return t;
             }
             else
             {
@@ -790,9 +778,9 @@ static Token scanToken(Lexer* L)
         case '#':
             // # short comment
             // change to makeShortComment(L, begin)
-            //Token t = makeToken(L, M_SHORT_COMMENT, begin);
+            Token t = makeToken(L, M_SHORT_COMMENT, begin);
             skipShortComments(L);
-            //return t;
+            return t;
         case '\0':
             //printf("Mmmm\n");
             return makeEOF(L, begin);
@@ -920,6 +908,8 @@ TokenArray* Lexer_execute(Lexer* L)
         //consume(L);
         //printf("antes\n");
         Token t = scanToken(L);
+        if (t.type == M_LONG_COMMENT_START || t.type == M_SHORT_COMMENT)
+            continue;
         pushToken(Tokens, t);
 
         if (t.type == M_EOF) break;

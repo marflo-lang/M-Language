@@ -29,6 +29,10 @@ static Expr* parser_list(Parser* P);
 static Expr* parser_dict(Parser* P);
 static Expr* parser_index(Parser* P, Expr* left);
 static Expr* parser_expr_error(Parser* P);
+static Expr* make_error_expr(Parser* P, Token token, const char* message);
+static void sync_expression(Parser* P);
+static void sync_statement(Parser* P);
+static Expr* new_dict_key_literal(Parser* P, Token id);
 
 // Constructors
 static Expr* new_literal(Parser* P, Token token);
@@ -183,39 +187,52 @@ static bool match(Parser* P, LTokenType ttype)
     return false;
 }
 
-static void consume(Parser* P, LTokenType ttype, const char* expected)
+static bool consume(Parser* P, LTokenType ttype, const char* expected)
 {
     if (P->current.type == ttype)
     {
         advance(P);
+        return true;
     }
     else
     {
-        //printf("mal\n");
-        ////advance(P);
-        //// error
-        //char* got = "";//(char*)arena_allocator(P->arena, sizeof(P->current.length + 1));
-        //strncpy(got, P->src + P->current.location.begin.offset, P->current.length);
-        ////strncpy_s(got, P->src + P->current.location.begin.offset, P->current.length);
-        ////strncpy();
-        //got[P->current.length] = '\0';
-        //size_t len = P->current.length;
-
-        //char* got = malloc(len + 1);  // espacio para '\0'
-        //if (!got) return; // opcional pero correcto
-
-        //strncpy_s(
-        //    got,
-        //    len + 1,  // tamaño del buffer destino
-        //    P->src + P->current.location.begin.offset,
-        //    len
-        //);
-        ////print_token(P->src, P->current);
-        //got[len] = '\0';
         char* got = getText(P->current.length, P->src, P->current.location.begin.offset);
         expectedButGot(expected, P->current.type == M_EOF ? "<eof>" : got, NULL, P->name, P->current.location);
         free(got);
+        P->hadError = true;
+        return false;
     }
+}
+
+static inline bool is_statement_start(LTokenType type)
+{
+    switch (type)
+    {
+        case M_VAR:
+        case M_CONST:
+        case M_IF:
+        case M_WHILE:
+        case M_FOR:
+        case M_LBRACE:
+        case M_RBRACE: // is '}' a start statement?
+        case M_EOF: // why is eof here, if on while is P->current.type != M_EOF?
+            return true;
+        default:
+            return false;
+
+    }
+}
+
+static void sync_expression(Parser* P)
+{
+    while (!is_expr_terminator(P->current.type))
+        advance(P);
+}
+
+static void sync_statement(Parser* P)
+{
+    while (P->current.type != M_EOF && !is_statement_start(P->current.type))
+        advance(P);
 }
 
 static bool is_valid_stmt_expr(Expr* e)
@@ -275,28 +292,6 @@ static Expr* parser_expression(Parser* P)
 static Expr* parser_precedence(Parser* P, Precedence prec)
 {
     advance(P);
-    //printf("AQUÍ -> %d, %d\n", P->previous.type, P->current.type);
-    //ParserRule* rule = get_rule(P->previous.type);
-    //if (rule == NULL) 
-    //{ 
-    //    size_t len = P->previous.length;
-
-    //    char* got = malloc(len + 1);  // espacio para '\0'
-    //    if (!got) return; // opcional pero correcto
-
-    //    strncpy_s(
-    //        got,
-    //        len + 1,  // tamaño del buffer destino
-    //        P->src + P->previous.location.begin.offset,
-    //        len
-    //    );
-
-    //    got[len] = '\0';
-    //    expectedButGot("identifier, int, float, string, AAAAAAAAAAAliteral", P->previous.type == M_EOF ? "<eof>" : got, " when parsing expression", P->name, P->previous.location);
-    //    free(got);
-    //    exit(1);
-    //    //printf("nonononoono %d\n", P->previous.type); exit(1);/* error message */ 
-    //}
 
     PrefixFn prefix = get_rule(P->previous.type)->prefix;
     if (prefix == NULL) 
@@ -316,35 +311,19 @@ static Expr* parser_precedence(Parser* P, Precedence prec)
         
         expectedButGot("identifier", P->previous.type == M_EOF ? "<eof>" : got, " when parsing expression", P->name, P->previous.location);
         free(got);
-        //exit(1);
-        //printf("========line: %d, column: %d, offset: %d==============\n", P->previous.location.end.line, P->previous.location.begin.column, P->previous.location.begin.offset);
+        P->hadError = true;
         return parser_expr_error(P);
-        //printf("nonononoono %d\n", P->previous.type); exit(1);/* error message */ 
     }
     Expr* left = prefix(P);
 
-    //ParserRule* newRule = get_rule(P->current.type);
+    while (!is_expr_terminator(P->current.type) && get_rule(P->current.type)->infix != NULL && prec <= get_rule(P->current.type)->precedence)
+    {
+        InfixFn infix = get_rule(P->current.type)->infix;
 
-    //if (newRule != NULL)
-    //{
-        while (!is_expr_terminator(P->current.type) && get_rule(P->current.type)->infix != NULL && prec <= get_rule(P->current.type)->precedence)
-        {
-            InfixFn infix = get_rule(P->current.type)->infix;
+        advance(P);
 
-            //if (infix == NULL)
-            //{
-            //    //printf("a\n");
-            //    return left;
-            //}
-
-            advance(P);
-
-            left = infix(P, left);
-        }
-
-    //}
-
-    //print("===============");
+        left = infix(P, left);
+    }
     return left;
 }
 
@@ -375,7 +354,6 @@ static Expr* parser_literal(Parser* P)
 
 static Expr* parser_identifier(Parser* P)
 {
-    //printf("========line: %d, column: %d, offset: %d==============\n", P->previous.location.end.line, P->previous.location.begin.column, P->previous.location.begin.offset);
     return parser_name_expr(P, P->previous);
 }
 
@@ -405,6 +383,8 @@ static Expr* parser_binary(Parser* P, Expr* left)
         rightAssoc ? prec : prec + 1
     );
 
+    if (left->expr_type == EXPR_ERROR || rigth->expr_type == EXPR_ERROR)
+        return rigth->expr_type == EXPR_ERROR ? rigth : left;
     return new_binary(P, left, op, rigth);
 }
 
@@ -447,18 +427,13 @@ static Expr* new_unary(Parser* P, Expr* right, Token op)
 static Expr* parser_prefix(Parser* P)
 {
     Token op = P->previous;
-
     Expr* right = parser_precedence(P, PREC_UNARY);
-
     return new_fix(P, op, right, true);
 }
 
 static Expr* parser_posfix(Parser* P, Expr* left)
 {
     Token op = P->previous;
-
-    //Expr* right = parser_precedence(P, PREC_UNARY);
-
     return new_fix(P, op, left, false);
 }
 
@@ -528,28 +503,16 @@ static Expr* parser_list(Parser* P)
 {
     Position begin = P->previous.location.begin;
     Position end = {0};
-    //bool fixed = false;
-    //Expr* capacity = NULL;
-    //if (P->previous.type == M_FIXED)
-    //{
-    //    begin = P->previous.location.begin;
-    //    fixed = true;
-    //    consume(P, M_LPAREN, "( after keyword fixed");
-    //    capacity = parser_expression(P);
-    //    consume(P, M_RPAREN, ") after fixed amount");
-    //}
-    //if (!fixed)
-    //    begin = P->previous.location.begin;
+    
     if (P->previous.type != M_LBRAKET)
         consume(P, M_LBRAKET, "[ to init list literal");
 
     Expr* tempElements[256];
     int elementAmount = 0;
-    //printf("1\n");
+    
     if (!(P->current.type == M_RBRAKET))
         while (true)
         {
-
             if (elementAmount >= 256)
             {
                 syntaxError("too many elements in list", P->name, tempElements[elementAmount - 1]->base.location);
@@ -603,18 +566,7 @@ static Expr* parser_dict(Parser* P)
 {
     Position begin = P->previous.location.begin;
     Position end = {0};
-    //bool fixed = false;
-    ////Expr* capacity = NULL;
-    //if (P->previous.type == M_FIXED)
-    //{
-    //    begin = P->previous.location.begin;
-    //    fixed = true;
-    //    consume(P, M_LPAREN, "( after keyword fixed");
-    //    //capacity = parser_expression(P);
-    //    consume(P, M_RPAREN, ") after fixed amount");
-    //}
-    //if (!fixed)
-    //    begin = P->previous.location.begin;
+    
     if (P->previous.type != M_LBRACE)
         consume(P, M_LBRAKET, "{ to init dictionary literal");
 
@@ -625,7 +577,7 @@ static Expr* parser_dict(Parser* P)
         {
             if (entriesAmount >= 256)
             {
-                syntaxError("too many elements in list", P->name, tempEntries[entriesAmount - 1].value->base.location);
+                syntaxError("too many elements in dictionary", P->name, tempEntries[entriesAmount - 1].value->base.location);
                 end = tempEntries[entriesAmount - 1].value->base.location.end;
                 if (P->current.type == M_RBRAKET)
                     advance(P);
@@ -637,15 +589,17 @@ static Expr* parser_dict(Parser* P)
             {
                 advance(P);
                 key = parser_expression(P);
-                consume(P, M_RBRAKET, "] to close [");
+                consume(P, M_RBRAKET, "} to close {");
             }
             else if (P->current.type == M_V_IDENTIFIER)
             {
-                key = parser_expression(P);
+                //key = parser_expression(P);
+                key = new_dict_key_literal(P, P->current);
+                advance(P);
             }
             else
             {
-                consume(P, M_LBRAKET, "[ or indetifier name");
+                consume(P, M_LBRAKET, "{ or indetifier name");
                 return parser_expr_error(P);
             }
 
@@ -692,7 +646,6 @@ static Expr* parser_dict(Parser* P)
     dict->expr.base.location = locationCPos(begin, end);
     dict->expr.base.ttype = NODE_EXPR;
     dict->expr.expr_type = EXPR_DICT;
-    //dict->capacity = capacity;
     dict->count = entriesAmount;
     dict->fixed = false;
     dict->entries = entries;
@@ -731,9 +684,10 @@ static Expr* parser_grouping(Parser* P)
         //print_token(P->src, P->previous);
         char* got = getText(P->previous.length, P->src, P->previous.location.begin.offset);
         expectedToClose(")", "(", got, " when parsing expression", P->name, begin, P->previous.location);
+        P->hadError = true;
+        sync_expression(P);
+        return parser_expr_error(P);
     }
-    //consume(P, M_RPAREN, "')'");
-
 
     return expr;
 }
@@ -750,18 +704,37 @@ static Expr* parser_name_expr(Parser* P, Token name)
     return (Expr*) expr;
 }
 
-static Expr* parser_expr_error(Parser* P)
+static Expr* new_dict_key_literal(Parser* P, Token id)
+{
+    LiteralExpr* expr = arena_allocator(P->arena, sizeof(LiteralExpr));
+
+    expr->expr.base.location = id.location;
+    expr->expr.base.ttype = NODE_EXPR;
+    expr->expr.expr_type = EXPR_LITERAL;
+    expr->value = id;
+    expr->value.type = M_V_STRING;
+
+    return (Expr*) expr;
+}
+
+static Expr* make_error_expr(Parser* P, Token token, const char* message)
 {
     ErrorExpr* error = arena_allocator(P->arena, sizeof(ErrorExpr));
 
     error->expr.base.ttype = NODE_EXPR;
-    error->expr.base.location = P->previous.location;
-    //printf("========line: %d, column: %d, offset: %d==============\n", P->previous.location.end.line, P->previous.location.begin.column, P->previous.location.begin.offset);
+    error->expr.base.location = token.location;
     error->expr.expr_type = EXPR_ERROR;
-    error->token = P->previous;
-    error->message = "Expected 'identifier', but got '%s'";
+    error->token = token;
+    error->message = message;
 
-    return (Expr*) error;
+    return (Expr*)error;
+}
+
+static Expr* parser_expr_error(Parser* P)
+{
+    Expr* error = make_error_expr(P, P->previous, "Invalid expression near '%.*s'");
+    sync_expression(P);
+    return error;
 }
 
 /*
@@ -779,33 +752,56 @@ static Stmt* parser_statement(Parser* P)
     if (match(P, M_SHORT_COMMENT)) return parser_statement(P);
     if (match(P, M_LONG_COMMENT_START)) return parser_statement(P);
 
-    //print("//////////");
-    //print_token(P->name, P->current);
-    //print("//////////");
     return parser_expr_or_assignment_stmt(P);
-    syntaxError("Incomplete Statement", P->name, P->current.location);
-    exit(1);
 }
 
 static Stmt* parser_var(Parser* P, bool isConst)
 {
-    //print("entra a var");
     Position begin = P->previous.location.begin;
+
+    if (P->current.type != M_V_IDENTIFIER)
+    {
+        Token bad = P->current;
+        char* got = getText(bad.length, P->src, bad.location.begin.offset);
+        expectedButGot("identifier", bad.type == M_EOF ? "<eof>" : got, " when parsing variable declaration", P->name, bad.location);
+        free(got);
+        P->hadError = true;
+        sync_statement(P);
+        return parser_stmt_error(P, make_error_expr(P, bad, "Expected identifier in variable declaration, got '%.*s'"));
+    }
+
     Token tempNames[8];
     int nameCount = 0;
 
-    tempNames[nameCount++] = P->current;
-    consume(P, M_V_IDENTIFIER, "identifier when parsing variable name");
+    //tempNames[nameCount++] = P->current;
+    //consume(P, M_V_IDENTIFIER, "identifier when parsing variable name");
 
-    while (match(P, M_COMMA))
+    while (true)
     {
-        if (nameCount + 1 >= 8)
+        if (nameCount >= 8)
         {
             syntaxError("Too many variables (max 8)", P->name, locationCPos(tempNames[0].location.begin, tempNames[nameCount - 1].location.end));
-            break;
+            P->hadError = true;
+            sync_statement(P);
+            return parser_stmt_error(P, parser_name_expr(P, tempNames[0]));
         }
+
         tempNames[nameCount++] = P->current;
-        consume(P, M_V_IDENTIFIER, "identifier when parsing variable name");
+        advance(P);
+
+        if (!match(P, M_COMMA))
+            break;
+
+        if (P->current.type != M_V_IDENTIFIER)
+        {
+            Token bad = P->current;
+            char* got = getText(bad.length, P->src, bad.location.begin.offset);
+            expectedButGot("identifier", bad.type == M_EOF ? "<eof>" : got, " when parsing variable declaration", P->name, bad.location);
+            free(got);
+            P->hadError = true;
+            sync_statement(P);
+            return parser_stmt_error(P, make_error_expr(P, bad, "Expected identifier in variable declaration, got '%.*s'"));
+        }
     }
 
 
@@ -818,11 +814,9 @@ static Stmt* parser_var(Parser* P, bool isConst)
     if (match(P, M_ASSING))
     {
         tempValues[valuesAmount++] = parser_expression(P);
-        //printf("entra\n");
 
         while (match(P, M_COMMA))
         {
-            //printf("algo");
             if (valuesAmount >= 8)
             {
                 syntaxError("Too many values (max 8)", P->name, locationCPos(tempValues[0]->base.location.begin, tempValues[valuesAmount-1]->base.location.end));
@@ -834,6 +828,7 @@ static Stmt* parser_var(Parser* P, bool isConst)
     else if (isConst)
     {
         syntaxError("const must have min one value", P->name, locationCPos(tempNames[0].location.begin, tempNames[nameCount-1].location.end));
+        P->hadError = true;
     }
 
     Expr** values = arena_allocator(P->arena, sizeof(Expr*) * valuesAmount);
@@ -852,10 +847,6 @@ static Stmt* parser_var(Parser* P, bool isConst)
     
     return (Stmt*) stmt;
 }
-
-/*
-TODO: Revisar la multi asignación, se comporta extraño, principalmente cuando son varios names
-*/
 
 static Stmt* parser_assign(Parser* P, Expr* left)
 {
@@ -897,12 +888,14 @@ static Stmt* parser_assign(Parser* P, Expr* left)
             }
             tempValues[valuesCount++] = parser_expression(P);
         }
-
     }
     else
     {
-        syntaxError("Expected '=' on assign statement", P->name, P->current.location);
-        return parser_stmt_error(P, &(Expr){.expr_type = EXPR_ERROR, .base = {.location = P->current.location, .ttype = NODE_EXPR}});
+        Token bad = P->current;
+        syntaxError("Expected '=' on assign statement", P->name, bad.location);
+        P->hadError = true;
+        sync_statement(P);
+        return parser_stmt_error(P, make_error_expr(P, bad, "Expected '=' on assign statement"));
     }
 
 
@@ -913,8 +906,6 @@ static Stmt* parser_assign(Parser* P, Expr* left)
     memcpy(values, tempValues, sizeof(Expr*) * valuesCount);
 
     StmtAssign* stmt = arena_allocator(P->arena, sizeof(StmtAssign));
-
-    //printf("===============line %d, cloumn %d\n", locationCPos(names[0].location.begin, values[valuesCount - 1]->base.location.end).begin.line, locationCPos(names[0].location.begin, values[valuesCount - 1]->base.location.end).begin.column);
 
     stmt->stmt.base.location = valuesCount > 0 ? locationCPos(names[0]->base.location.begin, values[valuesCount - 1]->base.location.end) : locationCPos(names[0]->base.location.begin, names[namesCount - 1]->base.location.end);
     stmt->stmt.base.ttype = NODE_STMT;
@@ -942,7 +933,6 @@ static Stmt* parser_compound_assing(Parser* P, Expr* left)
 
     StmtCompoundAssing* stmt = arena_allocator(P->arena, sizeof(StmtCompoundAssing));
 
-
     stmt->stmt.base.location = locationCPos(begin, end);
     stmt->stmt.base.ttype = NODE_STMT;
     stmt->stmt.stmt_type = STMT_COMPOUND_ASSING;
@@ -967,7 +957,6 @@ static Stmt* parser_if(Parser* P)
 
     StmtIf* stmt = arena_allocator(P->arena, sizeof(StmtIf));
     
-    //Position end = {0, 0, 0};///*elseBranch != NULL ? elseBranch->base.location.end : */ ifBranch->base.location.end;
     if (elseBranch != NULL)
     {
         assert(elseBranch->base.location.end.line > 0);
@@ -1007,7 +996,7 @@ static Stmt* parser_while(Parser* P)
     return (Stmt*) stmt;
 }
 
-// for i = 0, i < 10, i++
+// for i = 0, i < 10, i++ or for i = 0, i < 10; i++ or for i = 0, i < 10 
 // from -> i = 0
 // to -> i < 10
 // step -> i++
@@ -1016,16 +1005,32 @@ static Stmt* parser_for_numeric(Parser* P)
     Position begin = P->previous.location.begin;
 
     // from
+    if (P->current.type != M_V_IDENTIFIER)
+    {
+        Token bad = P->current;
+        char* got = getText(bad.length, P->src, bad.location.begin.offset);
+        expectedButGot("identifier", bad.type == M_EOF ? "<eof>" : got, " in for loop", P->name, bad.location);
+        free(got);
+        P->hadError = true;
+        sync_statement(P);
+        return parser_stmt_error(P, make_error_expr(P, bad, "Expected identifier in for loop, got '%.*s'"));
+    }
+
     Token* identi = arena_allocator(P->arena, sizeof(Token));
     identi[0] = P->current;
-    consume(P, M_V_IDENTIFIER, "identifier name");
-    consume(P, M_ASSING, "=");
+    advance(P);
+
+    if (!consume(P, M_ASSING, "="))
+    {
+        sync_statement(P);
+        return parser_stmt_error(P, make_error_expr(P, P->current, "Expected '=' in for loop"));
+    }
+
     Expr* tempValue[1];
     tempValue[0] = parser_expression(P);
 
     Expr** value = arena_allocator(P->arena, sizeof(Expr*));
     memcpy(value, tempValue, sizeof(Expr*));
-
 
     if (P->current.type == M_COMMA)
         advance(P);
@@ -1103,10 +1108,6 @@ static Stmt* parser_block(Parser* P)
     block->statements = stmts;
     block->count = count;
 
-    //block->base.kind = STMT_BLOCK;
-    //block->statements = stmts;
-    //block->count = count;
-    //print("fin del block");
     return (Stmt*) block;
 }
 
@@ -1125,10 +1126,17 @@ static Stmt* parser_expr_or_assignment_stmt(Parser* P)
 
     match(P, M_SEMICOLON);
 
+    if (first->expr_type == EXPR_ERROR)
+    {
+        P->hadError = true;
+        sync_statement(P);
+        return parser_stmt_error(P, first);
+    }
+
     if (!(first->expr_type == EXPR_PREFIX || first->expr_type == EXPR_POSTFIX))
     {
-
-        //printf("algún error por aquí\n");
+        P->hadError = true;
+        sync_statement(P);
         return parser_stmt_error(P, first);
     }
 
@@ -1149,7 +1157,7 @@ static Stmt* parser_stmt_error(Parser* P, Expr* expr)
     error->stmt.base.location = expr->base.location;
     error->stmt.stmt_type = STMT_ERROR;
     error->nodo = (Node*) expr;
-    error->message = "Expected a variable assignment, but got '%.*s'";
+    error->message = "Invalid statement near '%.*s'";
 
     return (Stmt*) error;
 }
@@ -1162,18 +1170,13 @@ static Stmt* parser_program(Parser* P)
     {
         if (stmtCount >= 1024)
         {
-            printErr("Demasiados Statements en el script principal", P->name, 3);
+            printErr("too many statements in main script", P->name, 3);
             exit(1);
         }
 
         assert(stmtCount < 1024);
         Stmt* stmt = parser_statement(P);
         tempStmts[stmtCount++] = stmt;
-
-        //print("esta en bucle");
-        //print_token(P->src, P->current);
-        //print("1");
-        //break;
     }
 
     Stmt** stmts = arena_allocator(P->arena, sizeof(Stmt*) * stmtCount);
@@ -1183,7 +1186,6 @@ static Stmt* parser_program(Parser* P)
 
     if (stmtCount > 0)
     {
-        //block->stmt.base.location = locationCPos(stmts[0]->base.location.begin, stmts[stmtCount - 1]->base.location.end);
         assert(P->Tokens->data[P->count - 1].type == M_EOF);
         block->stmt.base.location = locationCPos(stmts[0]->base.location.begin, P->Tokens->data[P->count - 1].location.end);
     }
@@ -1206,7 +1208,6 @@ Parser* parser_init(TokenArray* Tokens, Arena* A, const char* name, const char* 
     if (P == NULL)
     {
         memoryCrash(name);
-        //printErr("Error de memoria", "Parser", 3);
         exit(1);
     }
 
@@ -1223,15 +1224,7 @@ Parser* parser_init(TokenArray* Tokens, Arena* A, const char* name, const char* 
 
 Stmt* parser_execute(Parser* P)
 {
-    //printf("antes\n");
-    //printf("VAR: %d, %d, %d, %d\n", M_VAR, P->previous.type, P->current.type, P->pos);
-    //printf("%d, %d, %d \n", P->Tokens->data[0].type, P->Tokens->data[1].type, P->Tokens->data[2].type);
-    //print_token(P->src, peek(P));
-    //parser_statement(P);
     return parser_program(P);
-    //print_token(P->src, P->current);
-    //printf("%d, %d, %d\n", P->previous.type, P->current.type, P->pos);
-    //printf("despues\n");
 }
 
 #if (defined(DEBUG) && DEBUG == 1) && (defined(PARSER_DEBUG) && PARSER_DEBUG == 1)

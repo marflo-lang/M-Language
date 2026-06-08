@@ -10,8 +10,13 @@
 #include <limits.h>
 #include <float.h>
 #include <locale.h>
+#include <assert.h>
 
 static void free_temp_reg(Compiler* C, int reg);
+static void free_regs_block(Compiler* C, int start, int count);
+static int alloc_regs(Compiler* C, int count);
+static Constant token_to_value(Compiler* C, Token t);
+static Constant literal_token_to_value(Compiler* C, Token t);
 
 static void begin_scope(SymbolTable* T)
 {
@@ -176,6 +181,18 @@ static void parseIntegerLiteral(Compiler* C, Token t, const char* buffer, int64_
         *out = num;
 }
 
+static Constant literal_token_to_value(Compiler* C, Token t)
+{
+    if (t.type == M_V_STRING)
+    {
+        if (C->src[t.location.begin.offset] == '"')
+            return make_string(C->src, t.location.begin.offset + 1, t.length - 2);
+        return make_string(C->src, t.location.begin.offset, t.length);
+    }
+
+    return token_to_value(C, t);
+}
+
 static Constant token_to_value(Compiler* C, Token t)
 {
     switch (t.type)
@@ -318,9 +335,69 @@ static bool reg_is_local(/*const*/ Compiler* C, int reg)
     return false;
 }
 
+static void remove_free_reg_at(Compiler* C, int index)
+{
+    /*C->free_regs[index] = C->free_regs[C->free_count - 1];
+    C->free_count--;*/
+    assert(index >= 0);
+    assert(index < C->free_count);
+    for (int i = index; i < C->free_count - 1; i++)
+    {
+        C->free_regs[i] = C->free_regs[i + 1];
+    }
+    C->free_count--;
+}
+
+static int alloc_regs(Compiler* C, int count)
+{
+    if (count <= 0)
+        return REG_INVALID;
+
+    if (count > REG_POOL_MAX)
+        compilerError("Register limit exceeded (%d)", C->name, (Location) { 0 }, REG_POOL_MAX);
+
+    for (int i = 0; i <= C->free_count - count; i++)
+    {
+        bool consecutive = true;
+        for (int j = 1; j < count; j++)
+        {
+            if (C->free_regs[i + j] != C->free_regs[i] + j)
+            {
+                consecutive = false;
+                break;
+            }
+        }
+
+        if (consecutive)
+        {
+            int start = C->free_regs[i];
+            for (int j = count - 1; j >= 0; j--)
+                remove_free_reg_at(C, i + j);
+            return start;
+        }
+    }
+
+    int start = C->next_reg;
+    int end = start + count;
+
+    if (end > REG_POOL_MAX)
+        compilerError("Register limit exceeded (%d)", C->name, (Location) { 0 }, REG_POOL_MAX);
+    
+    int i = 0;
+    while (i < C->free_count)
+    {
+        if (C->free_regs[i] >= start && C->free_regs[i] < end)
+            remove_free_reg_at(C, i);
+        else
+            i++;
+    }
+    C->next_reg = end;
+    return start;
+}
+
 static int alloc_reg(Compiler* C)
 {
-    if (C->free_count > 0)
+    /*if (C->free_count > 0)
         return C->free_regs[--C->free_count];
 
     if (C->next_reg >= REG_POOL_MAX)
@@ -328,7 +405,8 @@ static int alloc_reg(Compiler* C)
         compilerError("Register limit exceeded (%d)", C->name, (Location) { 0 }, REG_POOL_MAX);
     }
 
-    return C->next_reg++;
+    return C->next_reg++;*/
+    return alloc_regs(C, 1);
 }
 
 /* Libera un registro temporal; nunca libera registros de variables. */
@@ -340,7 +418,29 @@ static void free_temp_reg(Compiler* C, int reg)
     if (C->free_count >= REG_POOL_MAX)
         return;
 
-    C->free_regs[C->free_count++] = reg;
+    /*C->free_regs[C->free_count++] = reg;*/
+
+    for (int i = 0; i < C->free_count; i++)
+    {
+        if (C->free_regs[i] == reg)
+            return;
+    }
+
+    int i = 0;
+    while (i < C->free_count && C->free_regs[i] < reg)
+        i++;
+
+    for (int j = C->free_count; j > i; j--)
+        C->free_regs[j] = C->free_regs[j - 1];
+
+    C->free_regs[i] = reg;
+    C->free_count++;
+}
+
+static void free_regs_block(Compiler* C, int start, int count)
+{
+    for (int i = 0; i < count; i++)
+        free_temp_reg(C, start + i);
 }
 
 /* Libera operandos temporales conservando resultado y variables. */
@@ -492,11 +592,23 @@ int compiler_expr(Compiler* C, Expr* expr, int target)
             ir_emit(&C->ir, IR_CREATE_LIST, r, capacity, list->fixed, list->expr.base.location);
             free_expr_reg(C, capacity, r, REG_INVALID);
 
-            for (int i = 0; i < list->count; i++)
+            if (list->count > 0)
             {
-                int element = compiler_expr(C, list->elements[i], -1);
-                ir_emit(C, IR_PUSH_LIST, r, element, 0, list->elements[i]->base.location);
-                free_expr_reg(C, element, r, REG_INVALID);
+                int first_element = alloc_regs(C, list->count);
+                
+                for (int i = 0; i < list->count; i++)
+                    compiler_expr(C, list->elements[i], first_element + i);
+
+                //for (int i = 0; i < list->count; i++)
+                    //ir_emit(C, IR_PUSH_LIST, r, first_element + i, 0, list->elements[i]->base.location);
+                ir_emit(C, IR_PUSH_LIST, r, first_element, list->count, locationCPos(list->expr.base.location.begin, list->expr.base.location.end));
+                free_regs_block(C, first_element, list->count);
+                //for (int i = 0; i < list->count; i++)
+                //{
+                //    int element = compiler_expr(C, list->elements[i], -1);
+                //    ir_emit(C, IR_PUSH_LIST, r, element, 0, list->elements[i]->base.location);
+                //    free_expr_reg(C, element, r, REG_INVALID);
+                //}
             }
 
             return r;
@@ -541,23 +653,33 @@ int compiler_expr(Compiler* C, Expr* expr, int target)
         {
             IndexExpr* index = (IndexExpr*) expr;
 
-            int reg = (target > -1) ? target : alloc_reg(C);
-            int coll = compiler_expr(C, index->collection, -1);
-            int ind = compiler_expr(C, index->index, -1);
+            if (target > -1)
+            {
+                //int reg = (target > -1) ? target : alloc_reg(C);
+                int coll = compiler_expr(C, index->collection, -1);
+                int ind = compiler_expr(C, index->index, -1);
 
-            ir_emit(&C->ir, IR_GET_INDEX, reg, coll, ind, index->expr.base.location);
-            free_expr_reg(C, coll, reg, REG_INVALID);
-            free_expr_reg(C, ind, reg, REG_INVALID);
+                ir_emit(&C->ir, IR_GET_INDEX, /*reg*/ target, coll, ind, index->expr.base.location);
+                free_expr_reg(C, coll, /*reg*/ target, REG_INVALID);
+                free_expr_reg(C, ind, /*reg*/ target, REG_INVALID);
+                return target; 
+            }
 
+            int reg = alloc_regs(C, 3);
+            compiler_expr(C, index->collection, reg + 1);
+            compiler_expr(C, index->index, reg + 2);
+            ir_emit(&C->ir, IR_GET_INDEX, reg, reg + 1, reg + 2, index->expr.base.location);
+            free_temp_reg(C, reg + 1);
+            free_temp_reg(C, reg + 2);
             return reg;
         }
         case EXPR_BINARY:
         {
             BinaryExpr* binary = (BinaryExpr*) expr;
 
-            int r = (target > -1) ? target : alloc_reg(C);
-            int left = compiler_expr(C, binary->left, -1);
-            int right = compiler_expr(C, binary->right, -1);
+            //int r = (target > -1) ? target : alloc_reg(C);
+            //int left = compiler_expr(C, binary->left, -1);
+            //int right = compiler_expr(C, binary->right, -1);
 
             IROpCode op;
 
@@ -582,17 +704,30 @@ int compiler_expr(Compiler* C, Expr* expr, int target)
                 default: op = IR_ADD; break; // temporal
             }
 
-            ir_emit(&C->ir, op, r, left, right, binary->expr.base.location);
-            free_expr_reg(C, left, r, REG_INVALID);
-            free_expr_reg(C, right, r, REG_INVALID);
+            if (target > -1)
+            {
+                int left = compiler_expr(C, binary->left, -1);
+                int right = compiler_expr(C, binary->right, -1);
+                ir_emit(&C->ir, op, /*r*/ target, left, right, binary->expr.base.location);
+                free_expr_reg(C, left, /*r*/ target, REG_INVALID);
+                free_expr_reg(C, right, /*r*/ target, REG_INVALID);
+                return target; // antes -> return r
+            }
+
+            int r = alloc_regs(C, 3);
+            compiler_expr(C, binary->left, r + 1);
+            compiler_expr(C, binary->right, r + 2);
+            ir_emit(&C->ir, op, r, r + 1, r + 2, binary->expr.base.location);
+            free_temp_reg(C, r + 1);
+            free_temp_reg(C, r + 2);
             return r;
         }
         case EXPR_UNARY:
         {
             UnaryExpr* unary = (UnaryExpr*) expr;
 
-            int r = (target > -1) ? target : alloc_reg(C);
-            int right = compiler_expr(C, unary->right, -1);
+            //int r = (target > -1) ? target : alloc_reg(C);
+            //int right = compiler_expr(C, unary->right, -1);
             IROpCode op;
 
             switch (unary->op.type)
@@ -602,8 +737,19 @@ int compiler_expr(Compiler* C, Expr* expr, int target)
                 default: op = IR_UNM; break; // temporal
             }
 
-            ir_emit(&C->ir, op, r, right, 0, unary->expr.base.location);
-            free_expr_reg(C, right, r, REG_INVALID);
+            if (target > -1)
+            {
+                //int r = (target > -1) ? target : alloc_reg(C);
+                int right = compiler_expr(C, unary->right, -1);
+                ir_emit(&C->ir, op, /*r*/ target, right, 0, unary->expr.base.location);
+                free_expr_reg(C, right, /*r*/target, REG_INVALID);
+                return target; // return r
+            }
+
+            int r = alloc_regs(C, 2);
+            compiler_expr(C, unary->right, r + 1);
+            ir_emit(&C->ir, op, r, r + 1, 0, unary->expr.base.location);
+            free_temp_reg(C, r + 1);
             return r;
         }
         case EXPR_POSTFIX:
@@ -701,11 +847,36 @@ static void compiler_assign(Compiler* C, Expr* lvalue, Expr* rvalue, Location la
     }
 }
 
+static int compile_index_collection(Compiler* C, Expr* collection)
+{
+    if (collection->expr_type == EXPR_NAME)
+    {
+        NameExpr* name = (NameExpr*) collection;
+        Symbol* symbol = symbols_resolve(&C->symbol, name->name, C->src);
+
+        if (symbol == NULL)
+            compilerError("Variable '%.*s' has not yet been declared. Consider declaring it before using it", C->name, name->expr.base.location, name->name.length, &C->src[name->expr.base.location.begin.offset]);
+
+        return symbol->reg;
+    }
+
+    return compiler_expr(C, collection, -1);
+}
+
 static void compiler_index_assign(Compiler* C, Expr* lvalue, Expr* rvalue)
 {
     IndexExpr* index = (IndexExpr*) lvalue;
 
-    if (!(index->collection->expr_type == EXPR_NAME))
+    int coll = compile_index_collection(C, index->collection);
+    int ind = compiler_expr(C, index->index, -1);
+    int value = compiler_expr(C, rvalue, -1);
+
+    ir_emit(&C->ir, IR_SET_INDEX, coll, ind, value, index->expr.base.location);
+    if (index->collection->expr_type != EXPR_NAME)
+            free_temp_reg(C, coll);
+    free_expr_reg(C, ind, coll, REG_INVALID);
+    free_expr_reg(C, value, coll, REG_INVALID);
+    /*if (!(index->collection->expr_type == EXPR_NAME))
         compilerError("An internal error occurred in the node type of the collection", C->name, index->collection->base.location);
 
     NameExpr* name = (NameExpr*) index->collection;
@@ -721,7 +892,7 @@ static void compiler_index_assign(Compiler* C, Expr* lvalue, Expr* rvalue)
 
     ir_emit(&C->ir, IR_SET_INDEX, reg, ind, value, index->expr.base.location);
     free_expr_reg(C, ind, reg, REG_INVALID);
-    free_expr_reg(C, value, reg, REG_INVALID);
+    free_expr_reg(C, value, reg, REG_INVALID);*/
 }
 
 void compiler_stmt(Compiler* C, Stmt* stmt)
@@ -848,6 +1019,7 @@ void compiler_stmt(Compiler* C, Stmt* stmt)
         case STMT_EXPR:
         {
             StmtExpr* stmtE = (StmtExpr*) stmt;
+            /* se necesita almacenar el registro en r para poder liberarlo inmediatamente*/
             int r = compiler_expr(C, stmtE->expr, -1);
             free_temp_reg(C, r);
             return;
@@ -995,7 +1167,7 @@ static void print_ir(Compiler* C, int i)
     else if (ir.op == IR_SET_INDEX)
         printf("IR_SET_INDEX R%d %d R%d", ir.a, ir.b, ir.c);
     else if (ir.op == IR_PUSH_LIST)
-    printf("IR_PUSH_LIST R%d R%d", ir.a, ir.b);
+    printf("IR_PUSH_LIST R%d R%d %d", ir.a, ir.b), ir.c;
     else if (ir.op == IR_GET_INDEX)
     printf("IR_GET_INDEX R%d R%d R%d", ir.a, ir.b, ir.c);
     else if (ir.op == IR_CREATE_DICT)

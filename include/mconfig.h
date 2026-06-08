@@ -12,7 +12,7 @@
 #define M_MAXCCALLS 200
 
 /* Limits the number of variables per function */
-#define M_MAXVARS   200
+#define M_MAXVARS   256
 
 #define MAX_FRAMES  64
 

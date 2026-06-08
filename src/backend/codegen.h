@@ -41,7 +41,7 @@ typedef enum
     // Listas
     OP_CREATE_LIST, // A, B, C        R(A) = [] capacity = R(B), fixed = C
     //OP_SET_LIST,    // A, B, C        R(A)[B] = R[C]
-    OP_PUSH_LIST,   // A, B           R(A)[length + 1] = R(B)
+    OP_PUSH_LIST,   // A, B, C        R(A)[length + 1] = R(B) ... R(A)[length + 1 + C] = R(B + C)
     //OP_GET_LIST,    // A, B, C        R(A) = R(B)[R(C)]
 
     // Diccionarios
