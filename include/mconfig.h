@@ -8,32 +8,28 @@
 /* Limits the number of M stack slots */
 #define M_MAXSTACK  8000
 
+/* Initial / max M stack slots (dynamic stack grows up to M_MAXSTACK) */
+#define M_STACK_INITIAL  5
+
+#define EXTRA_STACK 5
+
 /* Limits the nested C calls */
 #define M_MAXCCALLS 200
 
 /* Limits the number of variables per function */
 #define M_MAXVARS   256
 
-#define MAX_FRAMES  64
+//#define MAX_FRAMES  64
 
-//typedef struct
-//{
-//    int line;
-//    int column;
-//}Position;
-//
-//typedef struct
-//{
-//    Position* begin;
-//    Position* end;
-//}Location;
+/* Built-in function ids (must match vm_register order) */
+//#define BUILTIN_PRINT  0
 
 typedef uint32_t Instruction;
 
-#define SIZE_OP 6
+#define SIZE_OP 8
 #define SIZE_A  8
-#define SIZE_B  9
-#define SIZE_C  9
+#define SIZE_B  8
+#define SIZE_C  8
 
 #define POS_OP  0
 #define POS_A   (POS_OP + SIZE_OP)
@@ -72,6 +68,4 @@ typedef uint32_t Instruction;
 
 #define CREATE_AsBx(op, a, sbx) \
     CREATE_ABx(op, a, (sbx) + MAX_sBx)
-
-
 

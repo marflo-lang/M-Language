@@ -55,7 +55,7 @@ typedef enum
     // Control de flujo
     OP_JUMP,        // Ax                 pc += Ax
     OP_JUMP_IF_FALSE,   // A, Bx        if !A -> pc += Bx
-    OP_HALT
+    OP_RETURN
 } BytecodeOp;
 
 

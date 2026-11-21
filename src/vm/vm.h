@@ -2,9 +2,12 @@
 
 #include "mconfig.h"
 #include "mobjects.h"
+#include "merror.h"
 #include "../backend/compiler.h"
 
-typedef struct Chunk
+#include <setjmp.h>
+
+struct Chunk
 {
     /* function name for stack trace */
     const char* name; 
@@ -28,68 +31,70 @@ typedef struct Chunk
     int return_count; 
     /* array of the code lines */
     int* lines; 
-}Chunk;
+};
 
-typedef struct
+/**
+* --- INFORMATION ABOUT CALLS ---
+* 
+*/
+
+typedef struct CallFrame
 {
-    Chunk* chunk;
-    /* The actual instruction pointer */
-    Instruction* ip; 
-    /* frame base on vm->stack */
-    Value* registers; 
-    /* chunk->register_capacity */
-    int slot_count; 
-    /* caller line when it was invokated (0 = main script) */
-    int call_line; 
-    /* name for trace; NULL --> chuck->name or script name */
-    const char* func_name; 
-    /* caller register index when writte down return values */
-    int result_base; 
+    Value* closure; // the closure pointer on the stack
+    Value* registers;// frame base on vm->stack
+    Value* top; // top for this closure
+    Instruction* pc; // saved pc where has to continue
+    int call_line; // caller line when it was invokated (0 = main script)
+    int expected_returns; // return values expected by caller (OP_CALL C operand)
+    uint8_t flags; 
 }CallFrame;
 
-typedef enum {
-    INVALID_OPERANDS_ERROR,
-    TYPES_ERROR,
-    ARITHMETIC_ERROR,
-    MEMORY_ERROR,
-    INTERNAL_ERROR,
-    ASSIGNMENT_ERROR,
-    RESIZE_LIST_ERROR,
-    RESIZE_DICT_ERROR,
-    INDEX_OUT_OF_BOUNDS_ERROR,
-    ATTEMPED_TO_INDEX_NO_COLLECTION_ERROR,
-    INDEX_ERROR,
-    INVALID_KEY_TYPE_ERROR,
-} RErrorType;
-
-typedef struct
-{
-    bool has_error;
-    char message[512];
-    int line;
-    RErrorType type;
-} RuntimeError;
+// Should the interpreter return after returning from this CallFrame?, First frame must have this set
+#define M_CALLFRAME_RETURN (1 << 0)
 
 typedef enum
 {
     VM_OK = 0,
-    VM_RUNTIME_ERROR,
-    VM_HALTED
+    VM_RUNTIME_ERROR
 } VMStatus;
 
 struct VM
 {
     // frames
-    CallFrame frames[MAX_FRAMES]; /* frames array */
-    int frame_count; /* amount frames active */
-    
+    CallFrame* frames; /* frames array */
+    CallFrame* frame;
+    CallFrame* frame_last; /* last frame; it means the frames limit */
+    size_t frame_count; /* amount frames active */
+    short nestedCcalls; /* nested C calls (for stack overflow) */
+
     // stack
-    Value stack[M_MAXSTACK]; /* all vm stack */
-    Value* stack_top; /* vm stack top */
+    Value* stack; /* vm stack base */
+    Value* base; // current closure base
+    Value* top; /* first free slot in the stack */
+    Value* stack_last; /* last free stack slot; it means the stack limit */
+    size_t stack_size;
 
     // errors
-    RuntimeError error; /* error */
+    ErrorHandler* current_handler;
     const char* name; /* main script */
+
+    // functions
+    //Chunk** function_chunk;
+    //size_t function_chunk_count;
+
+    uint64_t rngseed; /* random number generator seed */
+
+    // builtin
+    //MBuiltinDef* builtins;
+    //size_t builtin_count;
+    //size_t builtin_capacity;
+
+    /*
+    * In the future, when we add threads, each thread will have
+    * its own env and the closure will point to the env of the thread
+    * it belongs to.
+    */
+    ObjDict* gd; // global dictionary
 
     // GC
     GCObject* objects;
@@ -100,59 +105,33 @@ struct VM
     StringTable strings;
 };
 
-/* vm helpers */
+typedef enum
+{
+    M_TYPE_INT,
+    M_TYPE_FLOAT
+} MNumType;
 
-/* --- runtime error helpers --- */
+#define toint(o, n) (isint(o) || ((o) = vmutils_tryToInt(o, n)) != NULL)
+#define tofloat(o, n)   (isfloat(o) || ((o) = vmutils_tryToFloat((o), (n))) != NULL)
+#define tonumber(o, n)  (toint(o, n) || tofloat(o, n))
+#define tostring(vm, o) (isstring(o) || vmutils_tryToString(vm, o))
 
-void vm_runtime_raise(VM* vm, RErrorType type, int line, const char* format, ...);
-void vm_runtime_clear(VM* vm);
-void vm_runtime_report(VM* vm);
+void mopen_builtin(VM* vm);
 
-int vm_current_line(VM* vm);
-const char* vm_frame_name(VM* vm, int frame_index);
-const char* vm_frame_source(VM* vm, int frame_index);
+bool vmutils_valueEquals(VM* vm, const Value* v1, const Value* v2);
+bool vmutils_lessthan(VM* vm, const Value* v1, const Value* v2);
+bool vmutils_lessOrEquals(VM* vm, const Value* v1, const Value* v2);
+int vmutils_strcmp(ObjString* leftS, ObjString* rightS);
+bool vmutils_tryToString(VM* vm, Value* obj);
+Value* vmutils_tryToInt(const Value* obj, Value* n);
+Value* vmutils_tryToFloat(const Value* obj, Value* n);
+Value* vmutils_tryToNumber(const Value* obj, Value* n);
+void vmutils_concat(VM* vm, int total, int last);
+int vmutils_precall(VM* vm, Value* func, int nresults);
 
-bool vm_push_frame(VM* vm, Chunk* chunk, int call_line, const char* func_name, int result_base);
-void vm_pop_frame(VM* vm);
-
-/*
- * Llamadas (convención para OP_CALL / codegen futuro):
- * - Caller coloca argumentos en R[arg_base .. arg_base+argc-1].
- * - argc puede ser < parameter_count; faltantes quedan nil (defaults los emite el compilador).
- * - Argumentos extra (argc > parameter_count) se ignoran.
- * - result_base: primer registro del caller donde vm_finish_return escribe los retornos.
- */
-bool vm_begin_call(VM* vm, Chunk* callee, int call_line, const char* func_name, int result_base, int arg_base, int argc);
-
-/*
- * returned_count: valores realmente devueltos por OP_RETURN (-1 = usar chunk->return_count).
- * return_reg_base: primer registro del callee con los valores a devolver.
- */
-bool vm_finish_return(VM* vm, int return_reg_base, int returned_count);
-
-VMStatus vm_run(VM* vm);
+void vm_free(VM* vm);
 VM* vm_init(Chunk* main_chunk, const char* name);
-int vm_execute(VM* vm);
-
-/* vm macros */
-
-/* return if vm has error */
-#define VM_HAS_ERROR(vm)        ((vm)->error.has_error)
-
-/* exit from helpers void when there's an error */
-#define VM_RETURN_IF_ERROR(vm) \
-    { if (VM_HAS_ERROR(vm)) return; }
-
-/* exir form vm_run / functions returns VMStatus */
-#define VM_RETURN_STATUS_IF_ERROR(vm) \
-    { if (VM_HAS_ERROR(vm)) return VM_RUNTIME_ERROR; }
-
-/* exit from interprete case (switch) */
-#define VM_BREAK_IF_ERROR(vm) \
-    { if (VM_HAS_ERROR(vm)) break; }
-
-/* actual line from active frame (para vm_runtime_raise) */
-#define VM_LINE(vm) vm_current_line(vm)
+void vm_execute(VM* vm);
 
 /* chunk helpers */
 

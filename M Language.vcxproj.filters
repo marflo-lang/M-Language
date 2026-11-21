@@ -42,6 +42,15 @@
     <ClCompile Include="src\vm\vm.c">
       <Filter>Archivos de origen</Filter>
     </ClCompile>
+    <ClCompile Include="src\vm\merror.c">
+      <Filter>Archivos de origen</Filter>
+    </ClCompile>
+    <ClCompile Include="src\vm\mstack.c">
+      <Filter>Archivos de origen</Filter>
+    </ClCompile>
+    <ClCompile Include="src\vm\mvmutils.c">
+      <Filter>Archivos de origen</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\frontend\ast.h">
@@ -81,6 +90,18 @@
       <Filter>Archivos de encabezado</Filter>
     </ClInclude>
     <ClInclude Include="include\mconfig.h">
+      <Filter>Archivos de encabezado</Filter>
+    </ClInclude>
+    <ClInclude Include="include\mdebug.h">
+      <Filter>Archivos de encabezado</Filter>
+    </ClInclude>
+    <ClInclude Include="include\common.h">
+      <Filter>Archivos de encabezado</Filter>
+    </ClInclude>
+    <ClInclude Include="src\vm\merror.h">
+      <Filter>Archivos de encabezado</Filter>
+    </ClInclude>
+    <ClInclude Include="src\vm\mstack.h">
       <Filter>Archivos de encabezado</Filter>
     </ClInclude>
   </ItemGroup>

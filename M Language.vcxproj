@@ -77,6 +77,7 @@
       <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
+      <AdditionalIncludeDirectories>C:\Users\gmarf\source\repos\M Language\include</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -92,6 +93,7 @@
       <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
+      <AdditionalIncludeDirectories>C:\Users\gmarf\source\repos\M Language\include</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -106,7 +108,7 @@
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <LanguageStandard_C>stdc17</LanguageStandard_C>
-      <AdditionalIncludeDirectories>C:\Users\gmarf\source\repos\M Language\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\Users\gmarf\source\repos\M Language\include</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -122,6 +124,7 @@
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
+      <AdditionalIncludeDirectories>C:\Users\gmarf\source\repos\M Language\include</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -136,12 +139,17 @@
     <ClCompile Include="src\frontend\parser.c" />
     <ClCompile Include="src\utils\allocator.c" />
     <ClCompile Include="src\utils\err.c" />
+    <ClCompile Include="src\vm\merror.c" />
     <ClCompile Include="src\vm\mobjects.c" />
+    <ClCompile Include="src\vm\mstack.c" />
+    <ClCompile Include="src\vm\mvmutils.c" />
     <ClCompile Include="src\vm\vm.c" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="include\common.h" />
     <ClInclude Include="include\m.h" />
     <ClInclude Include="include\mconfig.h" />
+    <ClInclude Include="include\mdebug.h" />
     <ClInclude Include="src\backend\codegen.h" />
     <ClInclude Include="src\backend\compiler.h" />
     <ClInclude Include="src\cli\cli.h" />
@@ -151,7 +159,9 @@
     <ClInclude Include="src\utils\allocator.h" />
     <ClInclude Include="src\utils\err.h" />
     <ClInclude Include="src\utils\print.h" />
+    <ClInclude Include="src\vm\merror.h" />
     <ClInclude Include="src\vm\mobjects.h" />
+    <ClInclude Include="src\vm\mstack.h" />
     <ClInclude Include="src\vm\vm.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

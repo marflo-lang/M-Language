@@ -242,9 +242,9 @@ Chunk* generate_bydecode(CodeGen* G)
                 break;
             }
 
-            case IR_HALT:
+            case IR_RETURN:
             {
-                emit(G, CREATE_ABC(OP_HALT, 0, 0, 0), loc);
+                emit(G, CREATE_ABC(OP_RETURN, 0, 0, 0), loc);
                 
                 break;
             }
@@ -356,8 +356,8 @@ static void print_bytecode(CodeGen* G, int i)
         printf("JUMP %d", GET_sBx(inst));
     else if (op == OP_JUMP_IF_FALSE)
         printf("JUMPIFFALSE R%d %d", GET_A(inst), GET_Bx(inst));
-    else if (op == OP_HALT)
-        printf("HALT");
+    else if (op == OP_RETURN)
+        printf("RETURN");
     else
         printf("Invalid op '%d'", op);
     printf("\n");
@@ -369,7 +369,7 @@ void codegen_print(CodeGen* G)
     printf("===== CODE GENERATOR DEBUG =====\n");
     printf("----- Bytecode -----\n");
     int i = 0;
-    for (i = 0; GET_OPCODE(G->chunk->instructions[i]) != OP_HALT; i++)
+    for (i = 0; GET_OPCODE(G->chunk->instructions[i]) != OP_RETURN; i++)
     {
         print_bytecode(G, i);
     }

@@ -2,6 +2,8 @@
 #include "../utils/err.h"
 #include "../backend/codegen.h"
 #include "vm.h"
+#include "mdebug.h"
+#include "mstack.h"
 
 #include <stdio.h>
 #include <stdint.h>
@@ -14,1670 +16,1072 @@
 #include <locale.h>
 #include <stdarg.h>
 
-/* --- Frames and errors --- */
-
-/**/
-static int vm_instruction_index(CallFrame* frame, Instruction* pc)
-{
-    ptrdiff_t off = pc - frame->chunk->instructions;
-    if (off < 0)
-        return 0;
-    if (off >= frame->chunk->actual_instruction)
-        return frame->chunk->actual_instruction - 1;
-    return (int) off;
-}
-
-static int vm_line_at_pc(CallFrame* frame, Instruction* pc)
-{
-    int idx = vm_instruction_index(frame, pc);
-    return frame->chunk->lines[idx];
-}
-
-/* init the registers from a new frame on NaN */
-static void vm_init_frame_registers(Value* base, int count)
-{
-    for (int i = 0; i < count; i++)
-        setnan(base[i]);
-}
-
-/* return the current line where vm is */
-int vm_current_line(VM* vm)
-{
-    if (vm->frame_count == 0)
-        return vm->error.line;
-    CallFrame* frame = &vm->frames[vm->frame_count - 1];
-    if (frame->ip <= frame->chunk->instructions)
-        return frame->chunk->lines[0];
-    return vm_line_at_pc(frame, frame->ip - 1);
-}
-
-/* return the frame name; this is necessary for trace stack */
-const char* vm_frame_name(VM* vm, int frame_index)
-{
-    CallFrame* frame = &vm->frames[frame_index];
-    if (frame->func_name != NULL)
-        return frame->func_name;
-    if (frame->chunk->name != NULL)
-        return frame->chunk->name;
-    if (frame_index == 0)
-        return vm->name != NULL ? vm->name : "<script>";
-    return "<anonymous>";
-}
-
-/* return the frame source; this is necessary for trace stack */
-const char* vm_frame_source(VM* vm, int frame_index)
-{
-    CallFrame* frame = &vm->frames[frame_index];
-    if (frame->chunk->source != NULL)
-        return frame->chunk->source;
-    if (frame_index == 0 && vm->name != NULL)
-        return vm->name;
-    return vm->name != NULL ? vm->name : "<unknown>";
-}
-
-/* clear the error stack; this will be necessary when implemend try-catch and catch the error */
-void vm_runtime_clear(VM* vm)
-{
-    vm->error.has_error = false;
-    vm->error.message[0] = '\0';
-    vm->error.line = 0;
-    vm->error.type = INTERNAL_ERROR;
-}
-
-/* print the runtime error with stack trace if the vm->frame_count > 0 */
-void vm_runtime_report(VM* vm)
-{
-    if (!vm->error.has_error)
-        return;
-
-    const char* error_source = vm->name;
-    if (vm->frame_count > 0)
-        error_source = vm_frame_source(vm, vm->frame_count - 1);
-
-    printf("\033[1;31m");
-    printf("Runtime Error at %s:%d:", error_source, vm->error.line);
-    printf("\033[0m");
-    printf("\033[31m");
-    printf(" %s\n", vm->error.message);
-    printf("\033[0m");
-
-    if (vm->frame_count == 0)
-        return;
-
-    printf("\033[3;36m");
-    printf("Stack trace (most recent call last):\n");
-    for (int frame_index = vm->frame_count - 1; frame_index >= 0; frame_index--)
-    {
-        CallFrame* frame = &vm->frames[frame_index];
-        /* pendiente revisar el else (: frame->chunk->instructions) no es int*/
-        int line = (frame_index == vm->frame_count - 1)
-            ? vm->error.line
-            : vm_line_at_pc(frame, frame->ip > frame->chunk->instructions
-                ? frame->ip - 1
-                : frame->chunk->instructions);
-
-        printf("  at %s (%s):%d\n", vm_frame_name(vm, frame_index), vm_frame_source(vm, frame_index), line);
-
-        if (frame_index > 0 && frame->call_line > 0)
-            printf("    called from %s (%s):%d\n", vm_frame_name(vm, frame_index - 1), vm_frame_source(vm, frame_index - 1), frame->call_line);
-    }
-        printf("\033[0m");
-}
-
-/* create a new frame on the top of CallFrame */
-bool vm_push_frame(VM* vm, Chunk* chunk, int call_line, const char* func_name, int result_base)
-{
-    if (vm->frame_count >= MAX_FRAMES)
-    {
-        vm_runtime_raise(vm, INTERNAL_ERROR, call_line > 0 ? call_line : VM_LINE(vm), "Call stack overflow: too many nested functions (max %d)", MAX_FRAMES);
-        return false;
+#define VM_REG(i)   (&R[i])
+#define VM_CONSTANT(i)  (&K[i])
+#define VM_UPVAL(i) (&closure->M.uprefs[i])
+#define VM_SAVE_PC()    vm->frame->pc = pc
+#define VM_PROTECT(func) \
+    { \
+        vm->frame->pc = pc; \
+        { \
+        func; \
+        } \
+        R = vm->base; \
     }
 
-    ptrdiff_t used = vm->stack_top - vm->stack;
-    if (used + chunk->register_capacity > M_MAXSTACK)
-    {
-        vm_runtime_raise(vm, INTERNAL_ERROR, call_line > 0 ? call_line : VM_LINE(vm), "Stack overflow: not enough register slots (max %d)", M_MAXSTACK);
-        return false;
-    }
-
-    CallFrame* frame = &vm->frames[vm->frame_count++];
-    frame->chunk = chunk;
-    frame->ip = chunk->instructions;
-    frame->registers = vm->stack_top;
-    frame->slot_count = chunk->register_capacity;
-    frame->call_line = call_line;
-    frame->func_name = func_name;
-    frame->result_base = result_base;
-
-    vm_init_frame_registers(frame->registers, frame->slot_count);
-    vm->stack_top += frame->slot_count;
-    return true;
-}
-
-/* close the most recent frame */
-void vm_pop_frame(VM* vm)
+static void vm_run(VM* vm)
 {
-    if (vm->frame_count == 0)
-        return;
-    CallFrame* frame = &vm->frames[vm->frame_count - 1];
-    vm->stack_top = frame->registers;
-    vm->frame_count--;
-    // falta poner 0 a todo lo que se quitó
-}
-
-/* 
-* caller is the function when call the new frame
-* callee is the new frame
-* arg_base is the register number when start to copy the register
-* argc is the count of register to copy
-*/
-static void vm_copy_call_args(CallFrame* caller , CallFrame* callee, int arg_base, int argc)
-{
-    int param_slots = callee->chunk->parameter_count;
-    if (param_slots < 0)
-        param_slots = 0;
-    
-    int copy = argc;
-    if (copy > param_slots)
-        copy = param_slots;
-    if (copy > callee->slot_count)
-        copy = callee->slot_count;
-
-    for (int i = 0; i < copy; i++)
-    {
-        int src = arg_base + i;
-        if (src < 0 || src >= caller->slot_count)
-            break;
-        callee->registers[i] = caller->registers[src];
-    }
-}
-
-/* this function starts a new M function */
-bool vm_begin_call(VM* vm, Chunk* callee, int call_line, const char* func_name, int result_base, int arg_base, int argc)
-{
-    CallFrame* caller = NULL;
-    if (vm->frame_count > 0)
-        caller = &vm->frames[vm->frame_count - 1];
-
-    if (!vm_push_frame(vm, callee, call_line, func_name, result_base))
-        return false;
-
-    if (caller != NULL && argc > 0)
-        vm_copy_call_args(caller, &vm->frames[vm->frame_count - 1], arg_base, argc);
-
-    return !vm->error.has_error;
-}
-
-/* this function calls when a M function finishes and push the returns values on last CallFrame register */
-bool vm_finish_return(VM* vm, int return_reg_base, int returned_count)
-{
-    if (vm->frame_count == 0)
-        return false;
-
-    CallFrame* callee = &vm->frames[vm->frame_count - 1];
-    int max_returns = callee->chunk->return_count;
-    if (max_returns < 0)
-        max_returns = 0;
-
-    int copy_count = max_returns;
-    if (returned_count >= 0)
-        copy_count = returned_count;
-    if (copy_count > max_returns)
-        copy_count = max_returns;
-
-    if (return_reg_base < 0)
-        return_reg_base = 0;
-
-    if (vm->frame_count > 1 && copy_count > 0)
-    {
-        CallFrame* caller = &vm->frames[vm->frame_count - 2];
-        int dest = caller->result_base;
-
-        if (dest < 0)
-            dest = 0;
-
-        int available = callee->slot_count - return_reg_base;
-        if (copy_count > available)
-            copy_count = available;
-
-        for (int i = 0; i < copy_count; i++)
+    M_ASSERT(vm != NULL);
+    M_ASSERT(vm->frame_count > 0);
+    Closure* closure;
+    Chunk* chunk;
+    const Instruction* pc;
+    Value* R;
+    Constant* K;
+        
+    //reentry:
+        closure = closurevalue(vm->frame->closure);
+        chunk = closure->M.chunk;
+        pc = vm->frame->pc;
+        R = vm->frame->registers;
+        K = chunk->constants;
+        dispatch:
+        int i = (int)(pc - chunk->instructions);
+        switch (GET_OPCODE(*pc))
         {
-            int dst = dest + i;
-            if (dst < 0 || dst >= caller->slot_count)
-                break;
-            caller->registers[dst] = callee->registers[return_reg_base + i];
-        }
-
-        for (int i = copy_count; i < max_returns; i++)
-        {
-            int dst = dest + i;
-            if (dst < 0 || dst >= caller->slot_count)
-                break;
-            setnan(caller->registers[dst]);
-        }
-    }
-
-    vm_pop_frame(vm);
-    return true;
-}
-
-typedef enum
-{
-    M_TYPE_INT,
-    M_TYPE_FLOAT
-} MNumType;
-
-static bool try_parse_string_number(const char* chars, size_t length, MNumType* type, int64_t* iout, double* fout)
-{
-    char* buffer = malloc(length + 1);
-    if (buffer == NULL)
-    {
-        memoryCrash("VM");
-        exit(1);
-    }
-    memcpy(buffer, chars, length);
-    buffer[length] = '\0';
-
-    char* dot = memchr(buffer, '.', length);
-
-    if (dot != NULL)
-    {
-        errno = 0;
-        char* endptr;
-        double num = strtod(buffer, &endptr);
-
-        bool ok = (endptr != buffer && *endptr == '\0' && errno == 0);
-
-        if (ok)
-        {
-            *type = M_TYPE_FLOAT;
-            *fout = num;
-        }
-
-        free(buffer);
-        return ok;
-    }
-    else
-    {
-        errno = 0;
-        char* endptr;
-        int64_t num = strtoll(buffer, &endptr, 10);
-
-        bool ok = (endptr != buffer && *endptr == '\0' && errno == 0);
-        if (ok)
-        {
-            *type = M_TYPE_INT;
-            *iout = num;
-        }
-
-        free(buffer);
-        return ok;
-    }
-}
-
-static bool can_coerce_to_number(Value v, MNumType* type, int64_t* iout, double* fout)
-{
-    if (isint(v))
-    {
-        *type = M_TYPE_INT;
-        *iout = ivalue(v);
-        return true;
-    }
-    else if (isfloat(v))
-    {
-        *type = M_TYPE_FLOAT;
-        *fout = fvalue(v);
-        return true;
-    }
-    else if (isstring(v))
-    {
-        return try_parse_string_number(svalue(v), slenvalue(v), type, iout, fout);
-    }
-
-    return false;
-}
-
-static bool value_to_string(VM* vm, Value v, char** out_chars, size_t* out_len)
-{
-    char buffer[128];
-
-    if (isint(v))
-    {
-        size_t len = snprintf(buffer, sizeof(buffer), "%" PRId64, ivalue(v));
-        if (len < 0) return false;
-
-        char* result = malloc(len + 1);
-        if (result == NULL)
-        {
-            memoryCrash("Converting int to string");
-            exit(1);
-        }
-
-        memcpy(result, buffer, len);
-        result[len] = '\0';
-
-        *out_chars = result;
-        *out_len = len;
-        return true;
-    }
-
-    if (isfloat(v))
-    {
-        double n = fvalue(v);
-
-        // Si quieres que 5.0 se vea como "5.0" y no como "5"
-        size_t len;
-        if (floor(n) == n)
-            len = snprintf(buffer, sizeof(buffer), "%.1f", n);
-        else
-            len = snprintf(buffer, sizeof(buffer), "%.17g", n);
-
-        if (len < 0) return false;
-
-        char* result = malloc(len + 1);
-        if (result == NULL)
-        {
-            memoryCrash("Converting float to string");
-            exit(1);
-        }
-
-        memcpy(result, buffer, len);
-        result[len] = '\0';
-
-        *out_chars = result;
-        *out_len = len;
-        return true;
-    }
-
-    if (isboolean(v))
-    {
-        const char* text = bvalue(v) ? "true" : "false";
-        size_t len = strlen(text);
-
-        char* result = malloc(len + 1);
-        if (result == NULL)
-        {
-            memoryCrash("Converting boolean to string");
-            exit(1);
-        }
-
-        memcpy(result, text, len + 1);
-        *out_chars = result;
-        *out_len = len;
-        return true;
-    }
-
-    if (isstring(v))
-    {
-        ObjString* s = (ObjString*)v.obj;
-        char* result = malloc(s->length + 1);
-        if (result == NULL)
-        {
-            memoryCrash("Converting string to string");
-            exit(1);
-        }
-
-        memcpy(result, s->chars, s->length);
-        result[s->length] = '\0';
-
-        *out_chars = result;
-        *out_len = s->length;
-        return true;
-    }
-
-    // Aquí luego irá list/dict/otros objetos
-    if (isobject(v))
-    {
-        GCObject* obj = v.obj;
-        size_t len = snprintf(buffer, sizeof(buffer), "<object:%p>", (void*)obj);
-        if (len < 0) return false;
-
-        char* result = malloc(len + 1);
-        if (result == NULL)
-        {
-            memoryCrash("Converting object to string");
-            exit(1);
-        }
-
-        memcpy(result, buffer, len);
-        result[len] = '\0';
-
-        *out_chars = result;
-        *out_len = len;
-        return true;
-    }
-
-    return false;
-}
-
-/* 
-* this function compare 2 strings caracter by caracter on ASCII format 
-* return < 0 if left string is smaller than right string
-* returns 0 if both strings are equals
-* return > 0 if right string is smaller than left string
-*/
-static int m_strcmp(ObjString* leftS, ObjString* rightS)
-{
-    /* Since the strings are interning, we compare the references, because if they are equal they will have the same reference */
-    if (leftS == rightS)
-        return 0;
-
-    const char* left = leftS->chars;
-    const char* right = rightS->chars;
-
-    size_t lengthL = leftS->length;
-    size_t lengthR = rightS->length;
-    size_t lengthMin = lengthL < lengthR ? lengthL : lengthR;
-
-    int res = memcmp(left, right, lengthMin); /* We compare the strings byte by byte */
-
-    if (res != 0) /* if res is 0, it means strings are equals */
-        return res;
-    /* We compare if they have the same size, or else we compare if left is smaller than right */
-    return lengthL == lengthR ? 0 : lengthL < lengthR ? -1 : 1; 
-}
-
-VMStatus vm_run(VM* vm)
-{
-    while (vm->frame_count > 0 && !vm->error.has_error)
-    {
-        CallFrame* frame = &vm->frames[vm->frame_count - 1];
-        Chunk* chunk = frame->chunk;
-        Instruction* pc = frame->ip;
-        Value* R = frame->registers;
-        Constant* K = chunk->constants;
-        Instruction* end = chunk->instructions + chunk->actual_instruction;
-
-        while (pc < end && !vm->error.has_error)
-        {
-            int i = (int) (pc - chunk->instructions);
-            const Instruction instr = *pc++;
-            frame->ip = pc;
-
-            const uint8_t op = GET_OPCODE(instr);
-
-            /* 
-            * caution macro VM_BREAK_IF_ERROR() actually execute after mark and exit the error 
-            * if you add new errors considery the flow breaks after the error and don't continue
-            * like happend with div, idiv, mod that they check if R[c] is not 0, then it immediately calls 
-            * VM_BREAK_IF_ERROR() because it needs to cut off the flow there, otherwise it would 
-            * continue and crash.
-            */
-            switch (op)
+            case OP_LOADK:
             {
-                case OP_LOADK:
+                Instruction instr = *pc++;
+                Value* ra = VM_REG(GET_A(instr));
+                uint16_t bx = GET_Bx(instr);
+
+                M_ASSERT(bx < chunk->constants_capacity);
+
+                Constant* kbx = VM_CONSTANT(bx);
+                if (kbx->type == C_INT)
                 {
-                    uint8_t a = GET_A(instr);
-                    uint16_t bx = GET_Bx(instr);
-                
-                    Constant kbx = K[bx];
-                    if (kbx.type == C_INT)
-                    {
-                        setint(R[a], kbx.i);
-                    }
-                    else if (kbx.type == C_FLOAT)
-                    {
-                        setfloat(R[a], kbx.f);
-                    }
-                    else if (kbx.type == C_BOOLEAN)
-                    {
-                        setboolean(R[a], kbx.b);
-                    }
-                    else if (kbx.type == C_NIL)
-                    {
-                        setnil(R[a]);
-                    }
-                    else if (kbx.type == C_NAN)
-                    {
-                        setnan(R[a]);
-                    }
-                    else if (kbx.type == C_STRING)
-                    {
-                        R[a].type = VAL_OBJ;
-                        R[a].obj = allocate_string(vm, kbx.string.chars, kbx.string.length);
-                    }
-                
-                    break;
+                    setint(ra, kbx->i);
+                }
+                else if (kbx->type == C_FLOAT)
+                {
+                    setfloat(ra, kbx->f);
+                }
+                else if (kbx->type == C_BOOLEAN)
+                {
+                    setboolean(ra, kbx->b);
+                }
+                else if (kbx->type == C_NIL)
+                {
+                    setnil(ra);
+                }
+                else if (kbx->type == C_NAN)
+                {
+                    setvoid(ra);
+                }
+                else if (kbx->type == C_STRING)
+                {
+                    ra->type = VAL_OBJ;
+                    ra->obj = allocate_string(vm, kbx->string.chars, kbx->string.length);
+                }
+                else
+                {
+                    M_UNREACHABLE("LOADK");
                 }
 
-                case OP_MOVE:
-                {
-                    uint8_t a = GET_A(instr);
-                    uint16_t bx = GET_Bx(instr);
+                goto dispatch;
+            }
 
-                    R[a] = R[bx];
-                    break;
+            case OP_MOVE:
+            {
+                Instruction instr = *pc++;
+                Value* ra = VM_REG(GET_A(instr));
+                Value* rb = VM_REG(GET_Bx(instr));
+
+                //M_ASSERT(bx < 256);
+
+                setobjr(ra, rb);
+                goto dispatch;
+            }
+
+            case OP_ADD:
+            {
+                Instruction instr = *pc++;
+                Value* ra = VM_REG(GET_A(instr));
+                Value* rb = VM_REG(GET_B(instr));
+                Value* rc = VM_REG(GET_C(instr));
+
+                // fast-path
+                if (isint(rb) && isint(rc))
+                {
+                    setint(ra, ivalue(rb) + ivalue(rc));
                 }
-
-                case OP_ADD:
+                else if (isfloat(rb) && isfloat(rc))
                 {
-                    uint8_t a = GET_A(instr);
-                    uint8_t b = GET_B(instr);
-                    uint8_t c = GET_C(instr);
-
-                    // fast-path
-                    if (isint(R[b]) && isint(R[c]))
+                    setfloat(ra, fvalue(rb) + fvalue(rc));
+                }
+                else if (islist(rb))
+                {
+                    M_ASSERT("Pendiente revisar si el depth del copy_list() es false o true");
+                    set_list(&ra, copy_list(vm, rb->obj, false));
+                    set_list_element(vm, ra, *rc, olistvalue(ra)->length);
+                }
+                else
+                {
+                    // slow-path
+                    VM_SAVE_PC();
+                    Value nb = { 0 }, nc = { 0 };
+                    if (vmutils_tryToNumber(rb, &nb) && vmutils_tryToNumber(rc, &nc))
                     {
-                        setint(R[a], ivalue(R[b]) + ivalue(R[c]));
-                    }
-                    else if (isfloat(R[b]) && isfloat(R[c]))
-                    {
-                        setfloat(R[a], fvalue(R[b]) + fvalue(R[c]));
-                    }
-                    else if (islist(R[b]))
-                    {
-                        set_list(&R[a], copy_list(vm, R[b].obj, chunk->lines[i]));
-                        set_list_element(vm, &R[a], R[c], 0, chunk->lines[i]);
+                        if (isint(&nb) && isint(&nc))
+                        {
+                            setint(ra, ivalue(&nb) + ivalue(&nc));
+                        }
+                        else if (isint(&nb) && isfloat(&nc))
+                        {
+                            setfloat(ra, ivalue(&nb) + fvalue(&nc));
+                        }
+                        else if (isfloat(&nb) && isint(&nc))
+                        {
+                            setfloat(ra, fvalue(&nb) + ivalue(&nc));
+                        }
+                        else if (isfloat(&nb) && isfloat(&nc))
+                        {
+                            setfloat(ra, fvalue(&nb) + fvalue(&nc));
+                        }
+                        else
+                            M_UNREACHABLE();
                     }
                     else
                     {
-                        // slow-path
-                        double num_fb, num_fc;
-                        int64_t num_ib, num_ic;
-                        MNumType type_b, type_c;
-                        if (can_coerce_to_number(R[b], &type_b, &num_ib, &num_fb) && can_coerce_to_number(R[c], &type_c, &num_ic, &num_fc))
+                        const char* type1 = getValueTypeName(rb);
+                        const char* type2 = getValueTypeName(rc);
+                        m_error(vm, INVALID_OPERANDS_ERROR, "Invalid operands '%s' and '%s' for operator '+'", type1, type2);
+                    }
+                }
+                //print_rvalue(ra, true);
+
+                goto dispatch;
+            }
+
+            case OP_SUB:
+            {
+                Instruction instr = *pc++;
+                Value* ra = VM_REG(GET_A(instr));
+                Value* rb = VM_REG(GET_B(instr));
+                Value* rc = VM_REG(GET_C(instr));
+
+                // fast-path
+                if (isint(rb) && isint(rc))
+                {
+                    setint(ra, ivalue(rb) - ivalue(rc));
+                }
+                else if (isfloat(rb) && isfloat(rc))
+                {
+                    setfloat(ra, fvalue(rb) - fvalue(rc));
+                }
+                else
+                {
+                    // slow-path
+                    VM_SAVE_PC();
+                    Value nb = { 0 }, nc = { 0 };
+                    if (vmutils_tryToNumber(rb, &nb) && vmutils_tryToNumber(rc, &nc))
+                    {
+                        if (isint(&nb) && isint(&nc))
                         {
-                            if (type_b == M_TYPE_INT && type_c == M_TYPE_INT)
-                            {
-                                setint(R[a], num_ib + num_ic);
-                            }
-                            else if (type_b == M_TYPE_INT && type_c == M_TYPE_FLOAT)
-                            {
-                                setfloat(R[a], num_ib + num_fc);
-                            }
-                            else if (type_b == M_TYPE_FLOAT && type_c == M_TYPE_INT)
-                            {
-                                setfloat(R[a], num_fb + num_ic);
-                            }
-                            else if (type_b == M_TYPE_FLOAT && type_c == M_TYPE_FLOAT)
-                            {
-                                setfloat(R[a], num_fb + num_fc);
-                            }
+                            setint(ra, ivalue(&nb) - ivalue(&nc));
+                        }
+                        else if (isint(&nb) && isfloat(&nc))
+                        {
+                            setfloat(ra, ivalue(&nb) - fvalue(&nc));
+                        }
+                        else if (isfloat(&nb) && isint(&nc))
+                        {
+                            setfloat(ra, fvalue(&nb) - ivalue(&nc));
+                        }
+                        else if (isfloat(&nb) && isfloat(&nc))
+                        {
+                            setfloat(ra, fvalue(&nb) - fvalue(&nc));
                         }
                         else
-                        {
-                            char* type1 = getValueTypeName(R[b]);
-                            char* type2 = getValueTypeName(R[c]);
-                            //vm->has_error = true;
-                            invalidOperandsError(vm, chunk->lines[i], "+", type1, type2);
-                        }
-                    }
-                    VM_BREAK_IF_ERROR(vm);
-                    //print_rvalue(R[a], true);
-
-                    break;
-                }
-
-                case OP_SUB:
-                {
-                    uint8_t a = GET_A(instr);
-                    uint8_t b = GET_B(instr);
-                    uint8_t c = GET_C(instr);
-
-                    // fast-path
-                    if (isint(R[b]) && isint(R[c]))
-                    {
-                        setint(R[a], ivalue(R[b]) - ivalue(R[c]));
-                    }
-                    else if (isfloat(R[b]) && isfloat(R[c]))
-                    {
-                        setfloat(R[a], fvalue(R[b]) - fvalue(R[c]));
+                            M_UNREACHABLE();
                     }
                     else
                     {
-                        // slow-path
-                        double num_fb, num_fc;
-                        int64_t num_ib, num_ic;
-                        MNumType type_b, type_c;
-                        if (can_coerce_to_number(R[b], &type_b, &num_ib, &num_fb) && can_coerce_to_number(R[c], &type_c, &num_ic, &num_fc))
-                        {
-                            if (type_b == M_TYPE_INT && type_c == M_TYPE_INT)
-                            {
-                                setint(R[a], num_ib - num_ic);
-                            }
-                            else if (type_b == M_TYPE_INT && type_c == M_TYPE_FLOAT)
-                            {
-                                setfloat(R[a], num_ib - num_fc);
-                            }
-                            else if (type_b == M_TYPE_FLOAT && type_c == M_TYPE_INT)
-                            {
-                                setfloat(R[a], num_fb - num_ic);
-                            }
-                            else if (type_b == M_TYPE_FLOAT && type_c == M_TYPE_FLOAT)
-                            {
-                                setfloat(R[a], num_fb - num_fc);
-                            }
-                        }
-                        else
-                        {
-                            char* type1 = getValueTypeName(R[b]);
-                            char* type2 = getValueTypeName(R[c]);
-                            //vm->has_error = true;
-                            invalidOperandsError(vm, chunk->lines[i], "-", type1, type2);
-                        }
-                    }
-                    VM_BREAK_IF_ERROR(vm);
-                    //print_rvalue(R[a], true);
-
-                    break;
-                }
-
-                case OP_MUL:
-                {
-                    uint8_t a = GET_A(instr);
-                    uint8_t b = GET_B(instr);
-                    uint8_t c = GET_C(instr);
-
-                    // fast-path
-                    if (isint(R[b]) && isint(R[c]))
-                    {
-                        setint(R[a], ivalue(R[b]) * ivalue(R[c]));
-                    }
-                    else if (isfloat(R[b]) && isfloat(R[c]))
-                    {
-                        setfloat(R[a], fvalue(R[b]) * fvalue(R[c]));
-                    }
-                    else if (islist(R[b]))
-                    {
-                        if (!isint(R[c]))
-                            typeError(vm, chunk->lines[i], "int", getValueTypeName(R[b]));
-
-                        int amountElements = listlenvalue(R[b]);
-                        int times = ivalue(R[c]);
-
-                        set_list(&R[a], copy_list(vm, R[b].obj, chunk->lines[i]));
-
-                        for (int i = 0; i < times; i++)
-                        {
-                            for (int j = 1; j <= amountElements; j++)
-                            {
-                                set_list_element(vm, &R[a], listvalue(R[b], j), 0, chunk->lines[i]);
-                            }
-                        }
-                    }
-                    else
-                    {
-                        // slow-path
-                        double num_fb, num_fc;
-                        int64_t num_ib, num_ic;
-                        MNumType type_b, type_c;
-                        if (can_coerce_to_number(R[b], &type_b, &num_ib, &num_fb) && can_coerce_to_number(R[c], &type_c, &num_ic, &num_fc))
-                        {
-                            if (type_b == M_TYPE_INT && type_c == M_TYPE_INT)
-                            {
-                                setint(R[a], num_ib * num_ic);
-                            }
-                            else if (type_b == M_TYPE_INT && type_c == M_TYPE_FLOAT)
-                            {
-                                setfloat(R[a], num_ib * num_fc);
-                            }
-                            else if (type_b == M_TYPE_FLOAT && type_c == M_TYPE_INT)
-                            {
-                                setfloat(R[a], num_fb * num_ic);
-                            }
-                            else if (type_b == M_TYPE_FLOAT && type_c == M_TYPE_FLOAT)
-                            {
-                                setfloat(R[a], num_fb * num_fc);
-                            }
-                        }
-                        else
-                        {
-                            char* type1 = getValueTypeName(R[b]);
-                            char* type2 = getValueTypeName(R[c]);
-                            //vm->has_error = true;
-                            invalidOperandsError(vm, chunk->lines[i], "*", type1, type2);
-                        }
-                    }
-                    VM_BREAK_IF_ERROR(vm);
-                    //print_rvalue(R[a], true);
-
-                    break;
-                }
-
-                case OP_DIV:
-                {
-                    uint8_t a = GET_A(instr);
-                    uint8_t b = GET_B(instr);
-                    uint8_t c = GET_C(instr);
-
-                    // fast-path
-                    if ((isint(R[c]) && ivalue(R[c]) == 0) || (isfloat(R[c]) && fvalue(R[c]) == 0.0))
-                    {
-                        arithmeticError(vm, chunk->lines[i]);
-                        VM_BREAK_IF_ERROR(vm);
-                    }
-                    if (isint(R[b]) && isint(R[c]))
-                    {
-                        setfloat(R[a], cast_double(ivalue(R[b])) / cast_double(ivalue(R[c])));
-                    }
-                    else if (isfloat(R[b]) && isfloat(R[c]))
-                    {
-                        setfloat(R[a], fvalue(R[b]) / fvalue(R[c]));
-                    }
-                    else
-                    {
-                        // slow-path
-                        double num_fb, num_fc;
-                        int64_t num_ib, num_ic;
-                        MNumType type_b, type_c;
-                        if (can_coerce_to_number(R[b], &type_b, &num_ib, &num_fb) && can_coerce_to_number(R[c], &type_c, &num_ic, &num_fc))
-                        {
-                            if ((type_c == M_TYPE_INT && num_ic == 0) || (type_c == M_TYPE_FLOAT && num_fc == 0.0))
-                            {
-                                arithmeticError(vm, chunk->lines[i]);
-                                VM_BREAK_IF_ERROR(vm);
-                            }
-                            if (type_b == M_TYPE_INT && type_c == M_TYPE_INT)
-                            {
-                                setfloat(R[a], cast_double(num_ib) / cast_double(num_ic));
-                            }
-                            else if (type_b == M_TYPE_INT && type_c == M_TYPE_FLOAT)
-                            {
-                                setfloat(R[a], cast_double(num_ib) / num_fc);
-                            }
-                            else if (type_b == M_TYPE_FLOAT && type_c == M_TYPE_INT)
-                            {
-                                setfloat(R[a], num_fb / cast_double(num_ic));
-                            }
-                            else if (type_b == M_TYPE_FLOAT && type_c == M_TYPE_FLOAT)
-                            {
-                                setfloat(R[a], num_fb / num_fc);
-                            }
-                        }
-                        else
-                        {
-                            char* type1 = getValueTypeName(R[b]);
-                            char* type2 = getValueTypeName(R[c]);
-                            //vm->has_error = true;
-                            invalidOperandsError(vm, chunk->lines[i], "/", type1, type2);
-                        }
-                    }
-                    VM_BREAK_IF_ERROR(vm);
-                    //print_rvalue(R[a], true);
-
-                    break;
-                }
-
-                case OP_IDIV:
-                {
-                    uint8_t a = GET_A(instr);
-                    uint8_t b = GET_B(instr);
-                    uint8_t c = GET_C(instr);
-
-                    // fast-path
-                    if ((isint(R[c]) && ivalue(R[c]) == 0) || (isfloat(R[c]) && fvalue(R[c]) == 0.0))
-                    {
-                        arithmeticError(vm, chunk->lines[i]);
-                        VM_BREAK_IF_ERROR(vm);
-                    }
-                    if (isint(R[b]) && isint(R[c]))
-                    {
-                        setint(R[a], cast_int(floor(cast_double(ivalue(R[b])) / cast_double(ivalue(R[c])))));
-                    }
-                    else if (isfloat(R[b]) && isfloat(R[c]))
-                    {
-                        setfloat(R[a], floor(fvalue(R[b]) / fvalue(R[c])));
-                    }
-                    else
-                    {
-                        // slow-path
-                        double num_fb, num_fc;
-                        int64_t num_ib, num_ic;
-                        MNumType type_b, type_c;
-                        if (can_coerce_to_number(R[b], &type_b, &num_ib, &num_fb) && can_coerce_to_number(R[c], &type_c, &num_ic, &num_fc))
-                        {
-                            if ((type_c == M_TYPE_INT && num_ic == 0) || (type_c == M_TYPE_FLOAT && num_fc == 0.0))
-                            {
-                                arithmeticError(vm, chunk->lines[i]);
-                                VM_BREAK_IF_ERROR(vm);
-                            }
-                            if (type_b == M_TYPE_INT && type_c == M_TYPE_INT)
-                            {
-                                setint(R[a], cast_int(floor(num_ib / num_ic)));
-                            }
-                            else if (type_b == M_TYPE_INT && type_c == M_TYPE_FLOAT)
-                            {
-                                setfloat(R[a], floor(cast_double(num_ib) / num_fc));
-                            }
-                            else if (type_b == M_TYPE_FLOAT && type_c == M_TYPE_INT)
-                            {
-                                setfloat(R[a], floor(num_fb / cast_double(num_ic)));
-                            }
-                            else if (type_b == M_TYPE_FLOAT && type_c == M_TYPE_FLOAT)
-                            {
-                                setfloat(R[a], floor(num_fb / num_fc));
-                            }
-                        }
-                        else
-                        {
-                            char* type1 = getValueTypeName(R[b]);
-                            char* type2 = getValueTypeName(R[c]);
-                            //vm->has_error = true;
-                            invalidOperandsError(vm, chunk->lines[i], "//", type1, type2);
-                        }
-                    }
-                    VM_BREAK_IF_ERROR(vm);
-                    //print_rvalue(R[a], true);
-
-                    break;
-                }
-
-                case OP_MOD:
-                {
-                    uint8_t a = GET_A(instr);
-                    uint8_t b = GET_B(instr);
-                    uint8_t c = GET_C(instr);
-
-                    // fast-path
-                    if ((isint(R[c]) && ivalue(R[c]) == 0) || (isfloat(R[c]) && fvalue(R[c]) == 0.0))
-                    {
-                        arithmeticError(vm, chunk->lines[i]);
-                        VM_BREAK_IF_ERROR(vm);
-                    }
-                    if (isint(R[b]) && isint(R[c]))
-                    {
-                        setint(R[a], cast_int(fmod(cast_double(ivalue(R[b])), cast_double(ivalue(R[c])))));
-                    }
-                    else if (isfloat(R[b]) && isfloat(R[c]))
-                    {
-                        setfloat(R[a], fmod(fvalue(R[b]), fvalue(R[c])));
-                    }
-                    else
-                    {
-                        // slow-path
-                        double num_fb, num_fc;
-                        int64_t num_ib, num_ic;
-                        MNumType type_b, type_c;
-                        if (can_coerce_to_number(R[b], &type_b, &num_ib, &num_fb) && can_coerce_to_number(R[c], &type_c, &num_ic, &num_fc))
-                        {
-                            if ((type_c == M_TYPE_INT && num_ic == 0) || (type_c == M_TYPE_FLOAT && num_fc == 0.0))
-                            {
-                                arithmeticError(vm, chunk->lines[i]);
-                                VM_BREAK_IF_ERROR(vm);
-                            }
-                            if (type_b == M_TYPE_INT && type_c == M_TYPE_INT)
-                            {
-                                setint(R[a], cast_int(fmod(cast_double(num_ib) , cast_double(num_ic))));
-                            }
-                            else if (type_b == M_TYPE_INT && type_c == M_TYPE_FLOAT)
-                            {
-                                setfloat(R[a], fmod(cast_double(num_ib), num_fc));
-                            }
-                            else if (type_b == M_TYPE_FLOAT && type_c == M_TYPE_INT)
-                            {
-                                setfloat(R[a], fmod(num_fb, cast_double(num_ic)));
-                            }
-                            else if (type_b == M_TYPE_FLOAT && type_c == M_TYPE_FLOAT)
-                            {
-                                setfloat(R[a], fmod(num_fb, num_fc));
-                            }
-                        }
-
-                        else
-                        {
-                            char* type1 = getValueTypeName(R[b]);
-                            char* type2 = getValueTypeName(R[c]);
-                            //vm->has_error = true;
-                            invalidOperandsError(vm, chunk->lines[i], "%", type1, type2);
-                        }
-                    }
-                    VM_BREAK_IF_ERROR(vm);
-                    //print_rvalue(R[a], true);
-
-                    break;
-                }
-
-                case OP_POW:
-                {
-                    uint8_t a = GET_A(instr);
-                    uint8_t b = GET_B(instr);
-                    uint8_t c = GET_C(instr);
-
-                    // fast-path
-                    if (isint(R[b]) && isint(R[c]))
-                    {
-                        int valb = ivalue(R[b]);
-                        int valc = ivalue(R[c]);
-                        // fast-paths because pow() is too slowly
-                        if (valc == 2)
-                        {
-                            setint(R[a], valb * valb);
-                        }
-                        else if (valc == 3)
-                        {
-                            setint(R[a], valb * valb * valb);
-                        }
-                        else if (valc == 0)
-                        {
-                            setint(R[a], 1);
-                        }
-                        else if (valc == 1)
-                        {
-                            setint(R[a], valb);
-                        }
-                        else
-                        {
-                            // slow-path
-                            setint(R[a], cast_int(pow(valb, valc)));
-                        }
-                    }
-                    else if (isfloat(R[b]) && isfloat(R[c]))
-                    {
-                        double valb = fvalue(R[b]);
-                        double valc = fvalue(R[c]);
-                        // fast-paths because pow() is too slowly
-                        if (valc == 2.0)
-                        {
-                            setfloat(R[a], valb * valb);
-                        }
-                        else if (valc == 0.5)
-                        {
-                            setfloat(R[a], sqrt(valb));
-                        }
-                        else if (valc == 3.0)
-                        {
-                            setfloat(R[a], valb * valb * valb);
-                        }
-                        else if (valc == 0.0)
-                        {
-                            setfloat(R[a], 1.0);
-                        }
-                        else if (valc == 1.0)
-                        {
-                            setfloat(R[a], valb);
-                        }
-                        else
-                        {
-                            // slow-path
-                            setfloat(R[a], pow(valb, valc));
-                        }
-                    }
-                    else
-                    {
-                        // slow-path
-                        double num_fb, num_fc;
-                        int64_t num_ib, num_ic;
-                        MNumType type_b, type_c;
-                        if (can_coerce_to_number(R[b], &type_b, &num_ib, &num_fb) && can_coerce_to_number(R[c], &type_c, &num_ic, &num_fc))
-                        {
-                            if (type_b == M_TYPE_INT && type_c == M_TYPE_INT)
-                            {
-                                setint(R[a], cast_int(pow(num_ib, num_ic)));
-                            }
-                            else if (type_b == M_TYPE_INT && type_c == M_TYPE_FLOAT)
-                            {
-                                setfloat(R[a], pow(num_ib, num_fc));
-                            }
-                            else if (type_b == M_TYPE_FLOAT && type_c == M_TYPE_INT)
-                            {
-                                setfloat(R[a], pow(num_fb, num_ic));
-                            }
-                            else if (type_b == M_TYPE_FLOAT && type_c == M_TYPE_FLOAT)
-                            {
-                                setfloat(R[a], pow(num_fb, num_fc));
-                            }
-                        }
-                        else
-                        {
-                            char* type1 = getValueTypeName(R[b]);
-                            char* type2 = getValueTypeName(R[c]);
-                            //vm->has_error = true;
-                            invalidOperandsError(vm, chunk->lines[i], "^", type1, type2);
-                        }
-                    }
-                    VM_BREAK_IF_ERROR(vm);
-                    //print_rvalue(R[a], true);
-
-                    break;
-                }
-
-                case OP_CONCAT:
-                {
-                    uint8_t a = GET_A(instr);
-                    uint8_t b = GET_B(instr);
-                    uint8_t c = GET_C(instr);
-
-                    char* sb = NULL;
-                    char* sc = NULL;
-                    size_t lb = 0, lc = 0;
-
-                    // fast-path
-                    //if (isstring(R[b]) && isstring(R[c]))
-                    //{
-                    //    int newLength = slenvalue(R[b]) + slenvalue(R[c]);
-
-                    //    char* result = malloc(newLength + 1);
-                    //    if (result == NULL)
-                    //    {
-                    //        memoryCrash("VM");
-                    //        exit(1);
-                    //    }
-                    //    
-                    //    memcpy(result, svalue(R[b]), slenvalue(R[b]));
-                    //    memcpy(result + slenvalue(R[b]), svalue(R[c]), slenvalue(R[c]));
-                    //    result[newLength] = '\0';
-
-                    //    //setstring(&R[a], result, newLength);
-                    //    R[a].type = VAL_OBJ;
-                    //    R[a].obj = allocate_string(vm, result, newLength);
-
-                    //    free(result);
-
-                    //    //printf("R[a] = '%.*s'\n", ((ObjString*)R[a].obj)->length, ((ObjString*)R[a].obj)->chars);
-
-                    //}
-                    if (islist(R[b]) && islist(R[c]))
-                    {
-                        int len = listlenvalue(R[b]) + listlenvalue(R[c]);
-                        set_list(&R[a], allocate_list(vm, 0, len, false));
-
-                        for (int j = 1; j <= listlenvalue(R[b]); j++)
-                        {
-                            set_list_element(vm, &R[a], listvalue(R[b], j), 0, chunk->lines[i]);
-                        }
-
-                        for (int j = 1; j <= listlenvalue(R[c]); j++)
-                        {
-                            set_list_element(vm, &R[a], listvalue(R[c], j), 0, chunk->lines[i]);
-                        }
-
-                    }
-                    else if (value_to_string(vm, R[b], &sb, &lb) && value_to_string(vm, R[c], &sc, &lc))
-                    {
-                        if (islist(R[b]) || islist(R[c]))
-                        {
-                            if (!isstring(R[b]) && !isstring(R[c]))
-                            {
-                                if (sb != NULL) free(sb);
-                                if (sc != NULL) free(sc);
-                                char* type1 = getValueTypeName(R[b]);
-                                char* type2 = getValueTypeName(R[c]);
-                                invalidOperandsError(vm, chunk->lines[i], "<>", type1, type2);
-                                VM_BREAK_IF_ERROR(vm);
-                            }
-                        }
-
-                        size_t newLength = lb + lc;
-                        char* result = malloc(newLength + 1);
-                        if (result == NULL)
-                        {
-                            memoryCrash("Concat strings");
-                            exit(1);
-                        }
-
-                        memcpy(result, sb, lb);
-                        memcpy(result + lb, sc, lc);
-                        result[newLength] = '\0';
-
-                        R[a].type = VAL_OBJ;
-                        R[a].obj = allocate_string(vm, result, newLength);
-
-                        free(result);
-                        free(sb);
-                        free(sc);
-                    }
-                    else
-                    {
-                        if (sb != NULL) free(sb);
-                        if (sc != NULL) free(sc);
-                        char* type1 = getValueTypeName(R[b]);
-                        char* type2 = getValueTypeName(R[c]);
+                        const char* type1 = getValueTypeName(rb);
+                        const char* type2 = getValueTypeName(rc);
                         //vm->has_error = true;
-                        invalidOperandsError(vm, chunk->lines[i], "<>", type1, type2);
+                        //invalidOperandsError(vm , "-", type1, type2);
+                        m_error(vm, INVALID_OPERANDS_ERROR, "Invalid operands '%s' and '%s' for operator '-'", type1, type2);
                     }
-                    VM_BREAK_IF_ERROR(vm);
-                    //print_rvalue(R[a], true);
+                }
+                //print_rvalue(ra, true);
 
-                    break;
+                goto dispatch;
+            }
+
+            case OP_MUL:
+            {
+                Instruction instr = *pc++;
+                Value* ra = VM_REG(GET_A(instr));
+                Value* rb = VM_REG(GET_B(instr));
+                Value* rc = VM_REG(GET_C(instr));
+
+                // fast-path
+                if (isint(rb) && isint(rc))
+                {
+                    setint(ra, ivalue(rb) * ivalue(rc));
+                }
+                else if (isfloat(rb) && isfloat(rc))
+                {
+                    setfloat(ra, fvalue(rb) * fvalue(rc));
+                }
+                else if (islist(rb))
+                {
+                    if (!isint(rc))
+                        //typeError(vm , "int", getValueTypeName(rb));
+                        m_error(vm, TYPES_ERROR , "Expected type 'int', but got '%s'", getValueTypeName(rb));
+
+                    int amountElements = listlenvalue(rb);
+                    int times = ivalue(rc);
+
+                    set_list(ra, copy_list(vm, rb->obj, false));
+
+                    M_ASSERT(!"Revisar el set_list_element() del for por la desreferenciación que se esta haciendo");
+                    for (int i = 0; i < times; i++)
+                    {
+                        for (int j = 1; j <= amountElements; j++)
+                        {
+                            set_list_element(vm, ra, *(listvalue(rb, j)), olistvalue(ra)->length);
+                        }
+                    }
+                }
+                else
+                {
+                    // slow-path
+                    VM_SAVE_PC();
+                    Value nb = { 0 }, nc = { 0 };
+                    if (vmutils_tryToNumber(rb, &nb) && vmutils_tryToNumber(rc, &nc))
+                    {
+                        if (isint(&nb) && isint(&nc))
+                        {
+                            setint(ra, ivalue(&nb) * ivalue(&nc));
+                        }
+                        else if (isint(&nb) && isfloat(&nc))
+                        {
+                            setfloat(ra, ivalue(&nb) * fvalue(&nc));
+                        }
+                        else if (isfloat(&nb) && isint(&nc))
+                        {
+                            setfloat(ra, fvalue(&nb) * ivalue(&nc));
+                        }
+                        else if (isfloat(&nb) && isfloat(&nc))
+                        {
+                            setfloat(ra, fvalue(&nb) * fvalue(&nc));
+                        }
+                        else
+                            M_UNREACHABLE();
+                    }
+                    else
+                    {
+                        const char* type1 = getValueTypeName(rb);
+                        const char* type2 = getValueTypeName(rc);
+                        m_error(vm, INVALID_OPERANDS_ERROR, "Invalid operands '%s' and '%s' for operator '*'", type1, type2);
+                    }
+                }
+                print_rvalue(ra, true);
+
+                goto dispatch;
+            }
+
+            case OP_DIV:
+            {
+                Instruction instr = *pc++;
+                Value* ra = VM_REG(GET_A(instr));
+                Value* rb = VM_REG(GET_B(instr));
+                Value* rc = VM_REG(GET_C(instr));
+
+                // fast-path
+                if ((isint(rc) && ivalue(rc) == 0) || (isfloat(rc) && fvalue(rc) == 0.0))
+                {
+                    VM_SAVE_PC();
+                    m_error(vm, ARITHMETIC_ERROR , "Division by Zero");
                 }
 
-                case OP_UNM:
+                if (isint(rb) && isint(rc))
                 {
-                    uint8_t a = GET_A(instr);
-                    uint8_t bx = GET_Bx(instr);
+                    setfloat(ra, cast_double(ivalue(rb)) / cast_double(ivalue(rc)));
+                }
+                else if (isfloat(rb) && isfloat(rc))
+                {
+                    setfloat(ra, fvalue(rb) / fvalue(rc));
+                }
+                else
+                {
+                    // slow-path
+                    VM_SAVE_PC();
+                    Value nb = { 0 }, nc = { 0 };
+                    if (vmutils_tryToNumber(rb, &nb) && vmutils_tryToNumber(rc, &nc))
+                    {
+                        if ((isint(&nc) && ivalue(&nc) == 0) || (isfloat(&nc) && fvalue(&nc) == 0.0))
+                            m_error(vm, ARITHMETIC_ERROR , "Division by Zero");
 
-                    // fast-path
-                    if (isint(R[bx]))
-                    {
-                        setint(R[a], -ivalue(R[bx]));
+                        if (isint(&nb) && isint(&nc))
+                        {
+                            setint(ra, ivalue(&nb) / ivalue(&nc));
+                        }
+                        else if (isint(&nb) && isfloat(&nc))
+                        {
+                            setfloat(ra, ivalue(&nb) / fvalue(&nc));
+                        }
+                        else if (isfloat(&nb) && isint(&nc))
+                        {
+                            setfloat(ra, fvalue(&nb) / ivalue(&nc));
+                        }
+                        else if (isfloat(&nb) && isfloat(&nc))
+                        {
+                            setfloat(ra, fvalue(&nb) / fvalue(&nc));
+                        }
+                        else
+                            M_UNREACHABLE();
                     }
-                    else if (isfloat(R[bx]))
+                    else
                     {
-                        setfloat(R[a], -fvalue(R[bx]));
+                        const char* type1 = getValueTypeName(rb);
+                        const char* type2 = getValueTypeName(rc);
+                        m_error(vm, INVALID_OPERANDS_ERROR, "Invalid operands '%s' and '%s' for operator '/'", type1, type2);
+                    }
+                }
+                //print_rvalue(ra, true);
+
+                goto dispatch;
+            }
+
+            case OP_IDIV:
+            {
+                Instruction instr = *pc++;
+                Value* ra = VM_REG(GET_A(instr));
+                Value* rb = VM_REG(GET_B(instr));
+                Value* rc = VM_REG(GET_C(instr));
+
+                // fast-path
+                if ((isint(rc) && ivalue(rc) == 0) || (isfloat(rc) && fvalue(rc) == 0.0))
+                {
+                    VM_SAVE_PC();
+                    m_error(vm, ARITHMETIC_ERROR , "Division by Zero");
+                }
+
+                if (isint(rb) && isint(rc))
+                {
+                    setint(ra, cast_int(floor(cast_double(ivalue(rb)) / cast_double(ivalue(rc)))));
+                }
+                else if (isfloat(rb) && isfloat(rc))
+                {
+                    setfloat(ra, floor(fvalue(rb) / fvalue(rc)));
+                }
+                else
+                {
+                    // slow-path
+                    VM_SAVE_PC();
+                    Value nb = { 0 }, nc = { 0 };
+                    if (vmutils_tryToNumber(rb, &nb) && vmutils_tryToNumber(rc, &nc))
+                    {
+                        if ((isint(&nc) && ivalue(&nc) == 0) || (isfloat(&nc) && fvalue(&nc) == 0.0))
+                            m_error(vm, ARITHMETIC_ERROR, "Division by Zero");
+
+                        if (isint(&nb) && isint(&nc))
+                        {
+                            setint(ra, cast(int64_t, floor(ivalue(&nb) / ivalue(&nc))));
+                        }
+                        else if (isint(&nb) && isfloat(&nc))
+                        {
+                            setfloat(ra, floor(ivalue(&nb) / fvalue(&nc)));
+                        }
+                        else if (isfloat(&nb) && isint(&nc))
+                        {
+                            setfloat(ra, floor(fvalue(&nb) / ivalue(&nc)));
+                        }
+                        else if (isfloat(&nb) && isfloat(&nc))
+                        {
+                            setfloat(ra, floor(fvalue(&nb) / fvalue(&nc)));
+                        }
+                        else
+                            M_UNREACHABLE();
+                    }
+                    else
+                    {
+                        const char* type1 = getValueTypeName(rb);
+                        const char* type2 = getValueTypeName(rc);
+                        m_error(vm, INVALID_OPERANDS_ERROR, "Invalid operands '%s' and '%s' for operator '//'", type1, type2);
+                    }
+                }
+                //print_rvalue(ra, true);
+
+                goto dispatch;
+            }
+
+            case OP_MOD:
+            {
+                Instruction instr = *pc++;
+                Value* ra = VM_REG(GET_A(instr));
+                Value* rb = VM_REG(GET_B(instr));
+                Value* rc = VM_REG(GET_C(instr));
+
+                // fast-path
+                if ((isint(rc) && ivalue(rc) == 0) || (isfloat(rc) && fvalue(rc) == 0.0))
+                {
+                    VM_SAVE_PC();
+                    m_error(vm, ARITHMETIC_ERROR , "Division by Zero");
+                }
+
+                if (isint(rb) && isint(rc))
+                {
+                    setint(ra, cast_int(fmod(cast_double(ivalue(rb)), cast_double(ivalue(rc)))));
+                }
+                else if (isfloat(rb) && isfloat(rc))
+                {
+                    setfloat(ra, fmod(fvalue(rb), fvalue(rc)));
+                }
+                else
+                {
+                    // slow-path
+                    VM_SAVE_PC();
+                    Value nb = { 0 }, nc = { 0 };
+                    if (vmutils_tryToNumber(rb, &nb) && vmutils_tryToNumber(rc, &nc))
+                    {
+                        if ((isint(&nc) && ivalue(&nc) == 0) || (isfloat(&nc) && fvalue(&nc) == 0.0))
+                            m_error(vm, ARITHMETIC_ERROR, "Division by Zero");
+
+                        if (isint(&nb) && isint(&nc))
+                        {
+                            setint(ra, cast_int(fmod(cast_double(ivalue(&nb)), cast_double(ivalue(&nc)))));
+                        }
+                        else if (isint(&nb) && isfloat(&nc))
+                        {
+                            setfloat(ra, fmod(cast_double(ivalue(&nb)), fvalue(&nc)));
+                        }
+                        else if (isfloat(&nb) && isint(&nc))
+                        {
+                            setfloat(ra, fmod(fvalue(&nb), cast_double(ivalue(&nc))));
+                        }
+                        else if (isfloat(&nb) && isfloat(&nc))
+                        {
+                            setfloat(ra, fmod(fvalue(&nb), fvalue(&nc)));
+                        }
+                        else
+                            M_UNREACHABLE();
+                    }
+                    else
+                    {
+                        const char* type1 = getValueTypeName(rb);
+                        const char* type2 = getValueTypeName(rc);
+                        m_error(vm, INVALID_OPERANDS_ERROR, "Invalid operands '%s' and '%s' for operator '%'", type1, type2);
+                    }
+                }
+                //print_rvalue(ra, true);
+
+                goto dispatch;
+            }
+
+            case OP_POW:
+            {
+                Instruction instr = *pc++;
+                Value* ra = VM_REG(GET_A(instr));
+                Value* rb = VM_REG(GET_B(instr));
+                Value* rc = VM_REG(GET_C(instr));
+
+                // fast-path
+                if (isint(rb) && isint(rc))
+                {
+                    int valb = ivalue(rb);
+                    int valc = ivalue(rc);
+                    // fast-paths because pow() is too slowly
+                    if (valc == 2)
+                    {
+                        setint(ra, valb * valb);
+                    }
+                    else if (valc == 3)
+                    {
+                        setint(ra, valb * valb * valb);
+                    }
+                    else if (valc == 0)
+                    {
+                        setint(ra, 1);
+                    }
+                    else if (valc == 1)
+                    {
+                        setint(ra, valb);
                     }
                     else
                     {
                         // slow-path
-                        double num_fbx;
-                        int64_t num_ibx;
-                        MNumType type_bx;
-                        if (can_coerce_to_number(R[bx], &type_bx, &num_ibx, &num_fbx))
+                        setint(ra, cast_int(pow(valb, valc)));
+                    }
+                }
+                else if (isfloat(rb) && isfloat(rc))
+                {
+                    double valb = fvalue(rb);
+                    double valc = fvalue(rc);
+                    // fast-paths because pow() is too slowly
+                    if (valc == 2.0)
+                    {
+                        setfloat(ra, valb * valb);
+                    }
+                    else if (valc == 0.5)
+                    {
+                        setfloat(ra, sqrt(valb));
+                    }
+                    else if (valc == 3.0)
+                    {
+                        setfloat(ra, valb * valb * valb);
+                    }
+                    else if (valc == 0.0)
+                    {
+                        setfloat(ra, 1.0);
+                    }
+                    else if (valc == 1.0)
+                    {
+                        setfloat(ra, valb);
+                    }
+                    else
+                    {
+                        // slow-path
+                        setfloat(ra, pow(valb, valc));
+                    }
+                }
+                else
+                {
+                    // slow-path
+                    VM_SAVE_PC();
+                    Value nb = { 0 }, nc = { 0 };
+                    if (vmutils_tryToNumber(rb, &nb) && vmutils_tryToNumber(rc, &nc))
+                    {
+                        if (isint(&nb) && isint(&nc))
                         {
-                            if (type_bx == M_TYPE_INT)
-                            {
-                                setint(R[a], -num_ibx);
-                            }
-                            else
-                            {
-                                setfloat(R[a], -num_fbx);
-                            }
+                            setint(ra, cast(int64_t, pow(cast_double(ivalue(&nb)), cast_double(ivalue(&nc)))));
+                        }
+                        else if (isint(&nb) && isfloat(&nc))
+                        {
+                            setfloat(ra, pow(cast_double(ivalue(&nb)), fvalue(&nc)));
+                        }
+                        else if (isfloat(&nb) && isint(&nc))
+                        {
+                            setfloat(ra, pow(fvalue(&nb), cast_double(fvalue(&nc))));
+                        }
+                        else if (isfloat(&nb) && isfloat(&nc))
+                        {
+                            setfloat(ra, pow(fvalue(&nb), fvalue(&nc)));
                         }
                         else
-                        {
-                            char* type1 = getValueTypeName(R[bx]);
-                            //vm->has_error = true;
-                            invalidOperandsError(vm, chunk->lines[i], "-", type1, NULL);
-                        }
+                            M_UNREACHABLE();
                     }
-                    VM_BREAK_IF_ERROR(vm);
-                    //print_rvalue(R[a], true);
-
-                    break;
+                    else
+                    {
+                        char* type1 = getValueTypeName(rb);
+                        char* type2 = getValueTypeName(rc);
+                        m_error(vm, INVALID_OPERANDS_ERROR , "Invalid operands '%s' and '%s' for operator '^'", type1, type2);
+                    }
                 }
+                //print_rvalue(ra, true);
 
-                case OP_NOT:
-                {
-                    uint8_t a = GET_A(instr);
-                    uint16_t bx = GET_Bx(instr);
+                goto dispatch;
+            }
 
-                    Value val = R[bx];
-                    setboolean(R[a], isfalse(val));
+            case OP_CONCAT:
+            {
+                Instruction instr = *pc++;
+                Value* ra = VM_REG(GET_A(instr));
+                Value* rb = VM_REG(GET_B(instr));
+                Value* rc = VM_REG(GET_C(instr));
 
-                    break;
-                }
-
-                case OP_OR:
-                {
-                    uint8_t a = GET_A(instr);
-                    uint8_t b = GET_B(instr);
-                    uint8_t c = GET_C(instr);
+                char* sb = NULL;
+                char* sc = NULL;
+                size_t lb = 0, lc = 0;
                 
-                    if (isfalse(R[b]))
-                    {
-                        R[a] = R[c];
-                    }
-                    else
-                    {
-                        R[a] = R[b];
-                    }
-
-                    break;
-                }
-
-                case OP_AND:
+                VM_SAVE_PC();
+                if (islist(rb) && islist(rc))
                 {
-                    uint8_t a = GET_A(instr);
-                    uint8_t b = GET_B(instr);
-                    uint8_t c = GET_C(instr);
+                    int len = listlenvalue(rb) + listlenvalue(rc);
+                    set_list(ra, allocate_list(vm, 0, len, false));
 
-                    if (isfalse(R[b]))
+                    M_ASSERT(!"Revisar los set_list_element() del for por la desreferenciación que se esta haciendo");
+                    for (int j = 1; j <= listlenvalue(rb); j++)
                     {
-                        R[a] = R[b];
-                    }
-                    else
-                    {
-                        R[a] = R[c];
+                        VM_PROTECT(set_list_element(vm, ra, *(listvalue(rb, j)), 0 ));
                     }
 
-                    break;
+                    for (int j = 1; j <= listlenvalue(rc); j++)
+                    {
+                        VM_PROTECT(set_list_element(vm, ra, *(listvalue(rc, j)), 0 ));
+                    }
+
                 }
-
-                case OP_CREATE_LIST:
+                else if (vmutils_tryToString(vm, rb) && vmutils_tryToString(vm, rc))
+                //else if (vmutils_tryToString(vm, rb, &sb, &lb) && vmutils_tryToString(vm, rc, &sc, &lc))
                 {
-                    uint8_t a = GET_A(instr);
-                    int8_t b = GET_B(instr);
-                    uint8_t c = GET_C(instr);
-
-                    if (b > -1 && !isint(R[b]))
+                    M_ASSERT(!"rb y rc no se estan copiando, se estan modificando directamente");
+                    if (islist(rb) || islist(rc))
                     {
-                        typeError(vm, chunk->lines[i], "int", getValueTypeName(R[b]));
-                        VM_BREAK_IF_ERROR(vm);
+                        if (!isstring(rb) && !isstring(rc))
+                        {
+                            if (sb != NULL) free(sb);
+                            if (sc != NULL) free(sc);
+                            char* type1 = getValueTypeName(rb);
+                            char* type2 = getValueTypeName(rc);
+                            m_error(vm, INVALID_OPERANDS_ERROR , "Invalid operands '%s' and '%s' for operator '<>'", type1, type2);
+                        }
                     }
 
-                    ObjList* list = allocate_list(vm, 0, (b > -1) ? ivalue(R[b]) : 0, c);
-                    set_list(&R[a], list);
-                    break;
+                    size_t newLength = lb + lc;
+                    char* result = malloc(newLength + 1);
+                    if (result == NULL)
+                    {
+                        memoryCrash("Concat strings");
+                        exit(1);
+                    }
+
+                    memcpy(result, sb, lb);
+                    memcpy(result + lb, sc, lc);
+                    result[newLength] = '\0';
+
+                    ra->type = VAL_OBJ;
+                    ra->obj = allocate_string(vm, result, newLength);
+
+                    free(result);
+                    free(sb);
+                    free(sc);
                 }
-
-                case OP_SET_INDEX:
+                else
                 {
-                    uint8_t a = GET_A(instr);
-                    uint8_t b = GET_B(instr);
-                    uint8_t c = GET_C(instr);
-
-                    if (islist(R[a]))
-                    {
-                        if (!isint(R[b]))
-                        {
-                            indexError(vm, chunk->lines[i], "int", getValueTypeName(R[b]));
-                            VM_BREAK_IF_ERROR(vm);
-                        }
-
-                        set_list_element(vm, &R[a], R[c], ivalue(R[b]), chunk->lines[i]);
-                    }
-                    else if (isdict(R[a]))
-                    {
-                        set_dict_key_value(vm,(ObjDict*) R[a].obj, R[b], R[c], chunk->lines[i]);
-                    }
-                    else
-                    {
-                        cannotAddElementNotList(vm, chunk->lines[i], getValueTypeName(R[a]));
-                    }
-                    VM_BREAK_IF_ERROR(vm);
-                    //print_rvalue(R[a], true);
-
-                    break;
+                    if (sb != NULL) free(sb);
+                    if (sc != NULL) free(sc);
+                    char* type1 = getValueTypeName(rb);
+                    char* type2 = getValueTypeName(rc);
+                    m_error(vm, INVALID_OPERANDS_ERROR , "Invalid operands '%s' and '%s' for operator '<>'", type1, type2);
                 }
+                //print_rvalue(ra, true);
 
-                case OP_PUSH_LIST:
+                goto dispatch;
+            }
+
+            case OP_UNM:
+            {
+                Instruction instr = *pc++;
+                Value* ra = VM_REG(GET_A(instr));
+                Value* rb = VM_REG(GET_Bx(instr));
+
+                // fast-path
+                if (isint(rb))
                 {
-                    uint8_t a = GET_A(instr);
-                    uint8_t b = GET_B(instr);
-                    uint8_t c = GET_C(instr);
-
-                    if (islist(R[a]))
-                    {
-                        //set_list_element(vm, &R[a], R[bx], 0, chunk->lines[i]);
-                        for (int i = 0; i < c; i++)
-                        {
-                            set_list_element(vm, &R[a], R[b + i], 0, chunk->lines[i]);
-                        }
-                    }
-                    else
-                    {
-                        cannotAddElementNotList(vm, chunk->lines[i], getValueTypeName(R[a]));
-                    }
-                    VM_BREAK_IF_ERROR(vm);
-                    //print_rvalue(R[a], true);
-
-                    break;
+                    setint(ra, -ivalue(rb));
                 }
-
-                case OP_GET_INDEX:
+                else if (isfloat(rb))
                 {
-                    uint8_t a = GET_A(instr);
-                    uint8_t b = GET_B(instr);
-                    uint8_t c = GET_C(instr);
-
-                    if (islist(R[b]))
-                    {
-                        if (!isint(R[c]))
-                        {
-                            indexError(vm, chunk->lines[i], "int", getValueTypeName(R[c]));
-                            VM_BREAK_IF_ERROR(vm);
-                        }
-
-                        R[a] = listvalue(R[b], ivalue(R[c]));
-                    }
-                    else if (isdict(R[b]))
-                    {
-                        get_dict_value(vm, R[b].obj, R[c], chunk->lines[i]);
-                    }
-                    else
-                    {
-                        attempedToIndexNoCollection(vm, chunk->lines[i], getValueTypeName(R[b]));
-                    }
-                    VM_BREAK_IF_ERROR(vm);
-                    //print_rvalue(R[a], true);
-
-                    break;
+                    setfloat(ra, -fvalue(rb));
                 }
-
-                case OP_CREATE_DICT:
+                else
                 {
-                    uint8_t a = GET_A(instr);
-                    uint8_t b = GET_B(instr);
-                    uint8_t c = GET_C(instr);
-
-                    R[a].type = VAL_OBJ;
-                    R[a].obj = allocate_dict(vm, b, c);
-
-                    break;
-                }
-
-                /* 
-                * don't use VM_BREAK_IF_ERROR() here because, when happend the error there's no
-                * any to break, so we only use the normal break
-                */
-                case OP_EQ:
-                {
-                    uint8_t a = GET_A(instr);
-                    uint8_t b = GET_B(instr);
-                    uint8_t c = GET_C(instr);
-
-                    if (ttype(R[b]) == ttype(R[c]))
+                    // slow-path
+                    Value nb = { 0 };
+                    if (vmutils_tryToNumber(rb, &nb))
                     {
-                        if (isboolean(R[b]))
+                        if (isint(&nb))
                         {
-                            setboolean(R[a], bvalue(R[b]) == bvalue(R[c]));
-                        }
-                        else if (isfloat(R[b]))
-                        {
-                            setboolean(R[a], fvalue(R[b]) == fvalue(R[c]));
-                        }
-                        else if (isint(R[b]))
-                        {
-                            setboolean(R[a], ivalue(R[b]) == ivalue(R[c]));
-                        }
-                        else if (isstring(R[b]))
-                        {
-                            setboolean(R[a], R[b].obj == R[c].obj);
-
-                        }
-                        else if (isnil(R[b]))
-                        {
-                            setboolean(R[a], true);
-                        }
-                        else if (ismnan(R[b]))
-                        {
-                            setboolean(R[a], true);
+                            setint(ra, -ivalue(&nb));
                         }
                         else
                         {
-                            unknownType(vm, chunk->lines[i], ttype(R[b]));
+                            setfloat(ra, -fvalue(&nb));
                         }
                     }
                     else
                     {
-                        setboolean(R[a], false);
+                        char* type1 = getValueTypeName(rb);
+                        m_error(vm, INVALID_OPERANDS_ERROR , "Invalid operand '%s' for operator unary '-'", type1);
                     }
-                    break;
+                }
+                //print_rvalue(ra, true);
+
+                goto dispatch;
+            }
+
+            case OP_NOT:
+            {
+                Instruction instr = *pc++;
+                Value* ra = VM_REG(GET_A(instr));
+                Value* rb = VM_REG(GET_Bx(instr));
+
+                setboolean(ra, isfalse(rb));
+
+                goto dispatch;
+            }
+
+            case OP_OR:
+            {
+                Instruction instr = *pc++;
+                Value* ra = VM_REG(GET_A(instr));
+                Value* rb = VM_REG(GET_B(instr));
+                Value* rc = VM_REG(GET_C(instr));
+
+                if (isfalse(rb))
+                {
+                    setobjr(ra, rc);
+                }
+                else
+                {
+                    setobjr(ra, rb);
                 }
 
-                case OP_NEQ:
-                {
-                    uint8_t a = GET_A(instr);
-                    uint8_t b = GET_B(instr);
-                    uint8_t c = GET_C(instr);
+                goto dispatch;
+            }
 
-                    if (ttype(R[b]) == ttype(R[c]))
-                    {
-                        if (isboolean(R[b]))
-                        {
-                            setboolean(R[a], bvalue(R[b]) != bvalue(R[c]));
-                        }
-                        else if (isfloat(R[b]))
-                        {
-                            setboolean(R[a], fvalue(R[b]) != fvalue(R[c]));
-                        }
-                        else if (isint(R[b]))
-                        {
-                            setboolean(R[a], ivalue(R[b]) != ivalue(R[c]));
-                        }
-                        else if (isstring(R[b]))
-                        {
-                            setboolean(R[a], R[b].obj != R[c].obj);
-                        }
-                        else if (isnil(R[b]))
-                        {
-                            setboolean(R[a], false);
-                        }
-                        else if (ismnan(R[b]))
-                        {
-                            setboolean(R[a], false);
-                        }
-                        else
-                        {
-                            unknownType(vm, chunk->lines[i], ttype(R[b]));
-                        }
-                    }
-                    else
-                    {
-                        setboolean(R[a], true);
-                    }
-                    break;
+            case OP_AND:
+            {
+                Instruction instr = *pc++;
+                Value* ra = VM_REG(GET_A(instr));
+                Value* rb = VM_REG(GET_B(instr));
+                Value* rc = VM_REG(GET_C(instr));
+
+                if (isfalse(rb))
+                {
+                    setobjr(ra, rb);
+                }
+                else
+                {
+                    setobjr(ra, rc);
                 }
 
-                case OP_LT:
+                goto dispatch;
+            }
+
+            case OP_CREATE_LIST:
+            {
+                Instruction instr = *pc++;
+                Value* ra = VM_REG(GET_A(instr));
+                Value* rb = VM_REG(GET_B(instr));
+                uint8_t c = GET_C(instr);
+
+                int8_t b = GET_B(instr);
+                if (b > -1 && !isint(rb))
                 {
-                    uint8_t a = GET_A(instr);
-                    uint8_t b = GET_B(instr);
-                    uint8_t c = GET_C(instr);
-
-                    if (ttype(R[b]) == ttype(R[c]))
-                    {
-                        if (isboolean(R[b]))
-                        {
-                            invalidOperandsError(vm, chunk->lines[i], "<", "boolean", "boolean");
-                        }
-                        else if (isfloat(R[b]))
-                        {
-                            setboolean(R[a], fvalue(R[b]) < fvalue(R[c]));
-                        }
-                        else if (isint(R[b]))
-                        {
-                            setboolean(R[a], ivalue(R[b]) < ivalue(R[c]));
-                        }
-                        else if (isstring(R[b]))
-                        {
-                            setboolean(R[a], (m_strcmp(R[b].obj, R[c].obj) < 0));
-                            //print_rvalue(R[a], true);
-                            //setboolean(R[a], slenvalue(R[b]) < slenvalue(R[c]));
-
-                        }
-                        else if (isnil(R[b]))
-                            invalidOperandsError(vm, chunk->lines[i], "<", "nil", "nil");
-                        else if (ismnan(R[b]))
-                            invalidOperandsError(vm, chunk->lines[i], "<", "NaN", "NaN");
-                        else
-                            unknownType(vm, chunk->lines[i], ttype(R[b]));
-                    }
-                    else
-                    {
-                        const char* type1 = getValueTypeName(R[b]);
-                        const char* type2 = getValueTypeName(R[c]);
-                        invalidOperandsError(vm, chunk->lines[i], "<", type1, type2);
-                    }
-                    break;
+                    VM_SAVE_PC();
+                    m_error(vm, TYPES_ERROR , "Expected type 'int', but got type '%s'", getValueTypeName(rb));
                 }
 
-                case OP_LTE:
+                ObjList* list = allocate_list(vm, 0, (b > -1) ? ivalue(rb) : 0, c);
+                set_list(ra, list);
+                goto dispatch;
+            }
+
+            case OP_SET_INDEX:
+            {
+                Instruction instr = *pc++;
+                Value* ra = VM_REG(GET_A(instr));
+                Value* rb = VM_REG(GET_B(instr));
+                Value* rc = VM_REG(GET_C(instr));
+
+                if (islist(ra))
                 {
-                    uint8_t a = GET_A(instr);
-                    uint8_t b = GET_B(instr);
-                    uint8_t c = GET_C(instr);
+                    if (!isint(rb))
+                    {
+                        VM_SAVE_PC();
+                        m_error(vm, INDEX_ERROR, "int");
 
-                    if (ttype(R[b]) == ttype(R[c]))
-                    {
-                        if (isboolean(R[b]))
-                            invalidOperandsError(vm, chunk->lines[i], "<=", "boolean", "boolean");
-                        else if (isfloat(R[b]))
-                        {
-                            setboolean(R[a], fvalue(R[b]) <= fvalue(R[c]));
-                        }
-                        else if (isint(R[b]))
-                        {
-                            setboolean(R[a], ivalue(R[b]) <= ivalue(R[c]));
-                        }
-                        else if (isstring(R[b]))
-                        {
-                            setboolean(R[a], (m_strcmp(R[b].obj, R[c].obj) <= 0));
-                            //print_rvalue(R[a], true);
-                            //setboolean(R[a], slenvalue(R[b]) <= slenvalue(R[c]));
-                        }
-                        else if (isnil(R[b]))
-                            invalidOperandsError(vm, chunk->lines[i], "<=", "nil", "nil");
-                        else if (ismnan(R[b]))
-                            invalidOperandsError(vm, chunk->lines[i], "<=", "NaN", "NaN");
-                        else
-                            unknownType(vm, chunk->lines[i], ttype(R[b]));
-                    }
-                    else
-                    {
-                        const char* type1 = getValueTypeName(R[b]);
-                        const char* type2 = getValueTypeName(R[c]);
-                        invalidOperandsError(vm, chunk->lines[i], "<=", type1, type2);
                     }
 
-                    break;
+                    VM_PROTECT(set_list_element(vm, ra, *rc, ivalue(rb)));
                 }
-
-                case OP_GT:
+                else if (isdict(ra))
                 {
-                    uint8_t a = GET_A(instr);
-                    uint8_t b = GET_B(instr);
-                    uint8_t c = GET_C(instr);
-
-                    if (ttype(R[b]) == ttype(R[c]))
-                    {
-                        if (isboolean(R[b]))
-                            invalidOperandsError(vm, chunk->lines[i], ">", "boolean", "boolean");
-                        else if (isfloat(R[b]))
-                        {
-                            setboolean(R[a], fvalue(R[b]) > fvalue(R[c]));
-                        }
-                        else if (isint(R[b]))
-                        {
-                            setboolean(R[a], ivalue(R[b]) > ivalue(R[c]));
-                        }
-                        else if (isstring(R[b]))
-                        {
-                            setboolean(R[a], (m_strcmp(R[b].obj, R[c].obj) > 0));
-                            //print_rvalue(R[a], true);
-                            //setboolean(R[a], slenvalue(R[b]) > slenvalue(R[c]));
-                        }
-                        else if (isnil(R[b]))
-                            invalidOperandsError(vm, chunk->lines[i], ">", "nil", "nil");
-                        else if (ismnan(R[b]))
-                            invalidOperandsError(vm, chunk->lines[i], ">", "NaN", "NaN");
-                        else
-                            unknownType(vm, chunk->lines[i], ttype(R[b]));
-                    }
-                    else
-                    {
-                        const char* type1 = getValueTypeName(R[b]);
-                        const char* type2 = getValueTypeName(R[c]);
-                        invalidOperandsError(vm, chunk->lines[i], ">", type1, type2);
-                    }
-
-                    break;
+                    VM_PROTECT(set_dict_key_value(vm, (ObjDict*)ra->obj, rb, rc));
                 }
-
-                case OP_GTE:
+                else
                 {
-                    uint8_t a = GET_A(instr);
-                    uint8_t b = GET_B(instr);
-                    uint8_t c = GET_C(instr);
-
-                    if (ttype(R[b]) == ttype(R[c]))
-                    {
-                        if (isboolean(R[b]))
-                            invalidOperandsError(vm, chunk->lines[i], ">=", "boolean", "boolean");
-                        else if (isfloat(R[b]))
-                        {
-                            setboolean(R[a], fvalue(R[b]) >= fvalue(R[c]));
-                        }
-                        else if (isint(R[b]))
-                        {
-                            setboolean(R[a], ivalue(R[b]) >= ivalue(R[c]));
-                        }
-                        else if (isstring(R[b]))
-                        {
-                            setboolean(R[a], (m_strcmp(R[b].obj, R[c].obj) >= 0));
-                            //print_rvalue(R[a], true);
-                            //setboolean(R[a], slenvalue(R[b]) >= slenvalue(R[c]));
-                        }
-                        else if (isnil(R[b]))
-                            invalidOperandsError(vm, chunk->lines[i], ">=", "nil", "nil");
-                        else if (ismnan(R[b]))
-                            invalidOperandsError(vm, chunk->lines[i], ">=", "NaN", "NaN");
-                        else
-                            unknownType(vm, chunk->lines[i], ttype(R[b]));
-                    }
-                    else
-                    {
-                        const char* type1 = getValueTypeName(R[b]);
-                        const char* type2 = getValueTypeName(R[c]);
-                        invalidOperandsError(vm, chunk->lines[i], ">=", type1, type2);
-                    }
-
-                    break;
+                    VM_SAVE_PC();
+                    m_error(vm, ASSIGNMENT_ERROR, getValueTypeName(ra));
                 }
+                //print_rvalue(ra, true);
 
-                case OP_JUMP:
+                goto dispatch;
+            }
+
+            case OP_PUSH_LIST:
+            {
+                Instruction instr = *pc++;
+                Value* ra = VM_REG(GET_A(instr));
+                Value* rb = VM_REG(GET_B(instr));
+                uint8_t c = GET_C(instr);
+
+                if (islist(ra))
                 {
-                    int16_t bx = GET_sBx(instr);
+                    for (int i = 0; i < c; i++)
+                    {
+                        VM_PROTECT(set_list_element(vm, ra, *(rb + i), 0 ));
+                    }
+                }
+                else
+                {
+                    VM_SAVE_PC();
+                    m_error(vm, ASSIGNMENT_ERROR , "Cannot assign an item to a non-list; Got type %s", getValueTypeName(ra));
+                }
+                //print_rvalue(ra, true);
+
+                goto dispatch;
+            }
+
+            case OP_GET_INDEX:
+            {
+                Instruction instr = *pc++;
+                Value* ra = VM_REG(GET_A(instr));
+                Value* rb = VM_REG(GET_B(instr));
+                Value* rc = VM_REG(GET_C(instr));
+
+                if (islist(rb))
+                {
+                    if (!isint(rc))
+                    {
+                        VM_SAVE_PC();
+                        m_error(vm, INDEX_ERROR , "Expected index type 'int', but got '%s'", getValueTypeName(rb));
+                    }
+
+                    M_ASSERT(!"Revisar '*ra = *(listvalue(rb, ivalue(rc)));'");
+                    *ra = *(listvalue(rb, ivalue(rc)));
+                }
+                else if (isdict(rb))
+                {
+                    M_ASSERT(!"Prev NULL");
+                    get_dict_value(vm, rb->obj, rc);
+                }
+                else
+                {
+                    VM_SAVE_PC();
+                    m_error(vm, ATTEMPED_TO_INDEX_NO_COLLECTION_ERROR , "Attemped to index '%s' instead of collection", getValueTypeName(rb));
+                }
+                //print_rvalue(ra, true);
+
+                goto dispatch;
+            }
+
+            case OP_CREATE_DICT:
+            {
+                Instruction instr = *pc++;
+                Value* ra = VM_REG(GET_A(instr));
+                uint8_t b = GET_B(instr);
+                uint8_t c = GET_C(instr);
+
+                ra->type = VAL_OBJ;
+                ra->obj = allocate_dict(vm, b, c);
+
+                goto dispatch;
+            }
+
+            case OP_EQ:
+            {
+                Instruction instr = *pc++;
+                Value* ra = VM_REG(GET_A(instr));
+                Value* rb = VM_REG(GET_B(instr));
+                Value* rc = VM_REG(GET_C(instr));
+
+                VM_PROTECT(setboolean(ra, vmutils_valueEquals(vm, rb, rc)));
+                
+                goto dispatch;
+            }
+
+            case OP_NEQ:
+            {
+                Instruction instr = *pc++;
+                Value* ra = VM_REG(GET_A(instr));
+                Value* rb = VM_REG(GET_B(instr));
+                Value* rc = VM_REG(GET_C(instr));
+
+                VM_PROTECT(setboolean(ra, !vmutils_valueEquals(vm, rb, rc)));
+                
+                goto dispatch;
+            }
+
+            case OP_LT:
+            {
+                Instruction instr = *pc++;
+                Value* ra = VM_REG(GET_A(instr));
+                Value* rb = VM_REG(GET_B(instr));
+                Value* rc = VM_REG(GET_C(instr));
+
+                VM_PROTECT(setboolean(ra, vmutils_lessthan(vm, rb, rc)));
+                
+                goto dispatch;
+            }
+
+            case OP_LTE:
+            {
+                Instruction instr = *pc++;
+                Value* ra = VM_REG(GET_A(instr));
+                Value* rb = VM_REG(GET_B(instr));
+                Value* rc = VM_REG(GET_C(instr));
+
+                VM_PROTECT(setboolean(ra, vmutils_lessOrEquals(vm, rb, rc)));
+                
+                goto dispatch;
+            }
+
+            case OP_GT:
+            {
+                Instruction instr = *pc++;
+                Value* ra = VM_REG(GET_A(instr));
+                Value* rb = VM_REG(GET_B(instr));
+                Value* rc = VM_REG(GET_C(instr));
+
+                VM_PROTECT(setboolean(ra, !vmutils_lessthan(vm, rc, rb)));
+
+                goto dispatch;
+            }
+
+            case OP_GTE:
+            {
+                Instruction instr = *pc++;
+                Value* ra = VM_REG(GET_A(instr));
+                Value* rb = VM_REG(GET_B(instr));
+                Value* rc = VM_REG(GET_C(instr));
+
+                VM_PROTECT(setboolean(ra, !vmutils_lessOrEquals(vm, rc, rb)));
+
+                goto dispatch;
+            }
+
+            case OP_JUMP:
+            {
+                Instruction instr = *pc++;
+                int16_t bx = GET_sBx(instr);
+                pc += bx;
+                i += bx;
+
+                goto dispatch;
+            }
+
+            case OP_JUMP_IF_FALSE:
+            {
+                Instruction instr = *pc++;
+                Value* ra = VM_REG(GET_A(instr));
+                uint16_t bx = GET_Bx(instr);
+                if (isfalse(ra))
+                {
                     pc += bx;
                     i += bx;
-
-                    break;
                 }
 
-                case OP_JUMP_IF_FALSE:
-                {
-                    uint8_t a = GET_A(instr);
-                    uint16_t bx = GET_Bx(instr);
-                    if (isfalse(R[a]))
-                    {
-                        pc += bx;
-                        i += bx;
-                    }
+                goto dispatch;
+            }
 
-                    break;
-                }
+            case OP_RETURN:
+            {
+                Instruction instr = *pc++;
+                Value* ra = VM_REG(GET_A(instr));
+                int b = GET_B(instr) - 1;
 
-                case OP_HALT:
-                {
-                    return;
-                }
+                CallFrame* frame = vm->frame;
+                CallFrame* framep = frame - 1;
 
-                default:
-                {
-                    unknownType(vm, chunk->lines[i], op);
-                    VM_BREAK_IF_ERROR(vm);
-                }
+                Value* res = frame->closure;
+
+                Value* val_init = ra;
+                Value* val_end = (b == -1) ? vm->top : ra + b;
+
+                int nresults = frame->expected_returns;
+
+                int i;
+                for (i = nresults; i != 0 && val_init < val_end; i--)
+                    setobjr(res++, val_init++);
+                while (i-- > 0)
+                    setvoid(res++);
+
+                vm->frame = framep;
+                vm->base = framep->registers;
+                vm->top = (nresults == -1) ? res : framep->top;
+                vm->frame_count--;
+
+                if (frame->flags & M_CALLFRAME_RETURN)
+                    goto exit;
+
+                Closure* next_closure = closurevalue(framep->closure);
+                Chunk* next_chunk = next_closure->M.chunk;
+
+                // reentry
+                pc = framep->pc;
+                closure = next_closure;
+                chunk = next_chunk;
+                R = vm->base;
+                K = next_chunk->constants;
+                goto dispatch;
+            }
+
+            default:
+            {
+                VM_SAVE_PC();
+                m_error(vm, INTERNAL_ERROR , "Unknown OPCODE type; Internal Enum '%d'", GET_OPCODE(*pc));
             }
         }
-        
-        if (!vm->error.has_error && pc >= end)
-            vm_pop_frame(vm);
-    }
-
-    return vm->error.has_error ? VM_RUNTIME_ERROR : VM_OK;
+    exit: ;
 }
 
-VM* vm_init(Chunk* main_chunk, const char* name)
+void vm_free(VM* vm)
 {
-    // Create vm
-    VM* vm = calloc(1, sizeof(VM));
+    if (vm == NULL) return;
+    free(vm->stack);
+    //free(vm->builtins);
+    free(vm);
+}
+
+static void vm_preinit(VM* vm)
+{
+    vm->base = NULL;
+    vm->bytes_allocated = 0;
+    vm->current_handler = NULL;
+    vm->frame = NULL;
+    vm->frames = NULL;
+    vm->frame_count = 0;
+    vm->frame_last = NULL;
+    vm->gcEnable = 0;
+    vm->gd = NULL;
+    vm->globals = NULL;
+    vm->name = NULL;
+    vm->nestedCcalls = 0;
+    vm->next_gc = 0;
+    vm->objects = NULL;
+    vm->rngseed = 0;
+    vm->stack = NULL;
+    vm->stack_last = NULL;
+    vm->stack_size = 0;
+    vm->top = NULL;
+}
+
+static VM* vm_new()
+{
+    VM* vm = malloc(sizeof(VM));
     if (vm == NULL)
     {
         memoryCrash("VM");
         exit(1);
     }
 
-    vm->stack_top = vm->stack;
-    vm->name = name;
-    vm_runtime_clear(vm);
-
-    main_chunk->name = NULL;
-    main_chunk->source = name;
-
-    if (!vm_push_frame(vm, main_chunk, 0, name, 0))
-        return 1;
-
-    // GC init
-    vm->objects = NULL;
-    vm->bytes_allocated = 0;
-    vm->next_gc = 1024 * 15;
-    vm->globals = NULL;
-    vm->gcEnable = false;
-    vm->strings.capacity = 0;
-    vm->strings.count = 0;
-    vm->strings.entries = NULL;
-
+    vm_preinit(vm);
+    stack_init(vm);
+    vm->strings = (StringTable){ 0 };
     return vm;
 }
 
-int vm_execute(VM* vm)
+VM* vm_init(Chunk* main_chunk, const char* name)
 {
-    setlocale(LC_NUMERIC, "C");
+    VM* vm = vm_new();
+    main_chunk->name = NULL;
+    main_chunk->source = name;
+    setclosure(vm->frame->closure, allocate_Mclosure(vm, 0, vm->gd, main_chunk));
+    vm->frame->pc = main_chunk->instructions;
+    return vm;
+}
 
-    VMStatus status = vm_run(vm);
+void vm_execute(VM* vm)
+{
+    setlocale(LC_ALL, "C");
 
-    if (status == VM_RUNTIME_ERROR || vm->error.has_error)
-        return 1;
-    return 0;
+    vm_run(vm);
 }
 
 Chunk* chunk_new()
@@ -1741,4 +1145,3 @@ void chunk_write(Chunk* chunk, Instruction instr, int line)
     chunk->lines[chunk->actual_instruction] = line;
     chunk->actual_instruction++;
 }
-

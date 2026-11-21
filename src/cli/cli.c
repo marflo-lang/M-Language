@@ -6,6 +6,7 @@
 #include "../backend/compiler.h"
 #include "../backend/codegen.h"
 #include "../utils/print.h"
+#include "../vm/mstack.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -23,14 +24,20 @@
 #include <sys/stat.h>
 #endif
 
+#ifdef  M_ASSERT_ENEABLED
+
+static int panic(const char* expression, const char* file, int line, const char* func)
+{
+    printf("Assertion failed: '%s'\nFile: '%s'\nLine: '%d'\nFunction: '%s'\n", expression, file, line, func);
+    return 1;
+}
+
+int (*assert_handler)(const char* expression, const char* file, int line, const char* func) = panic;
+
+#endif //  M_ASSERT_ENEABLED
+
 static void findTest(TestList* list, const char* path);
 static Source* read_file(const char* path);
-
-typedef struct
-{
-    VM* vm;
-    int status;
-} M_VMResult;
 
 static TestList createTest(size_t capacity)
 {
@@ -135,16 +142,31 @@ static Chunk* cli_execute_backend(Source* s, Config* config, Stmt* stmt)
     return mainChunk;
 }
 
-static M_VMResult cli_execute_vm(Config* config, Chunk* mainChunk)
+static void cli_execute_vm(Config* config, Chunk* mainChunk)
 {
     /*
         ========== Virtual Machine ==========
     */
 
     VM* vm = vm_init(mainChunk, config->script_path);
-    int result =  vm_execute(vm);
-    M_VMResult m_vmresult = { .vm = vm, .status = result };
-    return m_vmresult;
+    int status = m_resume(vm, 0);
+    if (status != 0)
+    {
+        m_StrBuf error;
+        m_bufferinit(vm, &error);
+
+        const char* str = 0;
+        if (str = stack_tostring(vm, -1))
+        {
+            m_buffaddstring(&error, str);
+        }
+
+        m_buffaddstring(&error, "\nstack backtrace\n");
+        m_buffaddstring(&error, m_traceback(vm));
+        m_buffpushresult(&error);
+        const char* rp = stack_tostring(vm, -1);
+        printf("%s\n", rp);
+    }
 }
 
 static void cli_run(Source* s, Config* config)
@@ -155,14 +177,12 @@ static void cli_run(Source* s, Config* config)
     clock_t endCompile = clock();
     printf("The time it took to compile the program is %f seconds\n", (double)(endCompile - startCompile) / CLOCKS_PER_SEC);
     clock_t startRun = clock();
-    M_VMResult m_vmresult = cli_execute_vm(config, mainChunk);
+    cli_execute_vm(config, mainChunk);
     clock_t endRun = clock();
     printf("The time it took to run the program is %f seconds\n", (double)(endRun - startRun) / CLOCKS_PER_SEC);
-    if (m_vmresult.status > 0 || m_vmresult.vm->error.has_error)
-        vm_runtime_report(m_vmresult.vm);
 }
 
-static M_VMResult cli_execute_test(Source* s, const char* name)
+static int cli_execute_test(Source* s, const char* name)
 {
     Lexer* L = Lexer_init(s->src, name);
     TokenArray* Tokens = Lexer_execute(L);
@@ -176,9 +196,25 @@ static M_VMResult cli_execute_test(Source* s, const char* name)
     Chunk* mainChunk = generate_bydecode(G);
     mainChunk->register_capacity = compiler_regs_used(C);
     VM* vm = vm_init(mainChunk, name);
-    int result = vm_execute(vm);
-    M_VMResult m_vmresult = { .vm = vm, .status = result };
-    return m_vmresult;
+    int status = m_resume(vm, 0);
+    if (status != 0)
+    {
+        m_StrBuf error;
+        m_bufferinit(vm, &error);
+
+        const char* str = 0;
+        if (str = stack_tostring(vm, -1))
+        {
+            m_buffaddstring(&error, str);
+        }
+
+        m_buffaddstring(&error, "\nstack backtrace\n");
+        //m_buffaddstring(&error, m_traceback(vm));
+        m_buffpushresult(&error);
+        const char* rp = stack_tostring(vm, -1);
+        printf("%s\n", rp);
+    }
+    return status;
 }
 
 static printInfoTest(const char* name, double time, bool pass)
@@ -222,15 +258,12 @@ static void cli_run_mode_test(Config* config)
         printf("-----------------------------\n");
         Source* s = read_file(config->list.paths[i]);
         clock_t startRun = clock();
-        M_VMResult m_vmressult = cli_execute_test(s, config->list.paths[i]);
+        int result = cli_execute_test(s, config->list.paths[i]);
         clock_t endRun = clock();
         double time = (double)(endRun - startRun) / CLOCKS_PER_SEC;
-        printInfoTest(m_vmressult.vm->name, time, m_vmressult.status == 0);
-        if (m_vmressult.status > 0 || m_vmressult.vm->error.has_error)
-        {
+        printInfoTest(config->list.paths[i], time, result == 0);
+        if (result != 0)
             failed++;
-            vm_runtime_report(m_vmressult.vm);
-        }
         else
             success++;
     }
@@ -658,5 +691,6 @@ int main(void)
             return 1;
         }
     }
+    return 0;
 }
 
